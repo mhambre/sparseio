@@ -1,0 +1,11 @@
+[package]
+name = "sparseio"
+authors = ["Matthew Hambrecht (hambrechtmatt@gmail.com)"]
+version = "0.0.0"
+edition = "2024"
+description = "A library for coordinating sparse, out-of-order byte-range fetching and materialization of large objects."
+homepage = "https://github.com/mhambre/sparseio"
+repository = "https://github.com/mhambre/sparseio"
+license = "Apache-2.0"
+
+[dependencies]
