@@ -8,4 +8,23 @@ homepage = "https://github.com/mhambre/sparseio"
 repository = "https://github.com/mhambre/sparseio"
 license = "Apache-2.0"
 
+[features]
+file = []
+memory = []
+http = []
+
+[[example]]
+name = "file_to_file"
+path = "examples/file_to_file.rs"
+required-features = ["file"]
+
 [dependencies]
+tokio = { version = "1.51.0", features = ["sync", "macros", "fs", "io-util", "rt-multi-thread"] }
+thiserror = "2"
+dashmap = "6.1.0"
+futures = "0.3.32"
+bytes = "1.11.1"
+
+[dev-dependencies]
+clap = { version = "4.6.0", features = ["derive"] }
+async-stream = "0.3.6"
