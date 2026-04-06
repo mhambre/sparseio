@@ -1,41 +1,14 @@
-use crate::{Result, inner::SourceReader};
+/// Trait to describe the Input operations for retrieving data from the associated upstream. This defines how
+/// the library fetches data from the source,
+pub trait Reader: Send {
+    /// Implementation of how to read a chunk of data from the source at the
+    /// given offset.
+    fn read_at(
+        &self,
+        offset: usize,
+        buffer: &mut [u8],
+    ) -> impl std::future::Future<Output = std::io::Result<usize>> + Send;
 
-/// Reader type for the sparse I/O library. This struct provides an interface to read
-/// from a sparse object opened via [`crate::SparseIO`].
-pub struct SparseReader<I: SourceReader> {
-    cursor: usize,
-    inner: I,
-}
-
-impl<I: SourceReader> SparseReader<I> {
-    pub(crate) fn new(inner: I) -> Self {
-        Self { cursor: 0, inner }
-    }
-
-    /// Move the file read cursor to the specified offset. Failure occurs
-    /// if the offset is out of bounds (greater than the length of the sparse object).
-    pub async fn seek(&mut self, offset: usize) -> Result<()> {
-        if offset > self.inner.len().await {
-            return Err(crate::Error::OOB);
-        }
-        self.cursor = offset;
-        Ok(())
-    }
-
-    /// Read data from the sparse object into the provided buffer, starting at the current cursor position.
-    /// The cursor is advanced by the number of bytes read. Failure occurs if the read goes out of bounds.
-    pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        let len = self.inner.len().await;
-        if self.cursor >= len || self.cursor.saturating_add(buf.len()) >= len {
-            return Err(crate::Error::OOB);
-        }
-
-        unimplemented!("Read logic not implemented yet");
-    }
-
-    // Get a bytestream of the sparse object starting at the current cursor position, and of the specified
-    // length.
-    // pub async fn stream(&mut self, len: usize) -> Result::<impl futures::Stream<Item = Result<bytes::Bytes>>> {
-    //     unimplemented!("Stream logic not implemented yet");
-    // }
+    /// Get the length of the full object.
+    fn len(&self) -> impl std::future::Future<Output = usize> + Send;
 }

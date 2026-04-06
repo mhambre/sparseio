@@ -31,11 +31,11 @@ async fn main() -> std::io::Result<()> {
     // Engines required to create a `SparseIO` instance. The `FileReader` is used to
     // read from the source file, and the `SparseFile` is our sparse destination object.
     let reader = FileReader::new(src_path);
-    let storage = SparseFile::new(dst_path);
+    let writer = SparseFile::new(dst_path);
 
     let sparse_io = SparseIOBuilder::new()
-        .inner(reader)
-        .storage(storage)
+        .reader(reader)
+        .writer(storage)
         .build()
         .expect("Failed to build SparseIO instance");
 

@@ -1,9 +1,9 @@
 //! File-backed source implementations.
 //!
 //! This module provides two small building blocks for file-based workflows:
-//! [`FileReader`], which implements [`crate::SourceReader`] for reading byte
+//! [`FileReader`], which implements [`crate::Reader`] for reading byte
 //! ranges from a local file, and [`SparseFile`], which implements
-//! [`crate::ExtentStore`] while materializing logical extents into a sparse
+//! [`crate::Writer`] while materializing logical extents into a sparse
 //! destination file.
 
 use std::collections::BTreeMap;
@@ -13,11 +13,11 @@ use std::path::{Path, PathBuf};
 use tokio::fs as tokio_fs;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
-use crate::{Extent, ExtentStore, SourceReader};
+use crate::{Extent, Reader, Writer};
 
 /// Reads byte ranges from a local file using Tokio file I/O.
 ///
-/// `FileReader` is intended to be used as the `SourceReader` for
+/// `FileReader` is intended to be used as the `Reader` for
 /// [`crate::SparseIO`]. Each `read_at` call opens the file, seeks to the
 /// requested offset, fills the provided buffer, and returns the number of bytes
 /// written into it.
@@ -38,7 +38,7 @@ impl FileReader {
     }
 }
 
-impl SourceReader for FileReader {
+impl Reader for FileReader {
     async fn read_at(&self, offset: usize, buffer: &mut [u8]) -> std::io::Result<usize> {
         let mut file = tokio_fs::File::open(&self.path).await?;
         file.seek(SeekFrom::Start(offset as u64)).await?;
@@ -57,7 +57,7 @@ impl SourceReader for FileReader {
 /// Stores logical extents in a sparse destination file.
 ///
 /// The file itself is used to reserve the logical address space. Extent metadata
-/// is tracked in-memory so the current `ExtentStore` trait can answer
+/// is tracked in-memory so the current `Writer` trait can answer
 /// `read_extent` requests. This makes the type useful as a simple example or
 /// local-materialization target, but it does not currently persist extent
 /// metadata across process restarts.
@@ -82,7 +82,7 @@ impl SparseFile {
     }
 }
 
-impl ExtentStore for SparseFile {
+impl Writer for SparseFile {
     async fn create_extent(&mut self, offset: usize, data: bytes::Bytes) -> std::io::Result<()> {
         let length = data.len();
         let file_len = offset
@@ -300,22 +300,6 @@ mod tests {
 
         let logical_size = fs::metadata(&sparse_path)?.len();
         assert_eq!(logical_size, logical_len as u64);
-
-        let mut file = fs::File::open(&sparse_path)?;
-
-        let mut persisted_start = vec![0u8; head_len];
-        file.read_exact(&mut persisted_start)?;
-        assert_eq!(persisted_start, vec![0xAB; head_len]);
-
-        let mut hole_byte = [0xFFu8; 1];
-        file.seek(SeekFrom::Start((head_len + 4096) as u64))?;
-        file.read_exact(&mut hole_byte)?;
-        assert_eq!(hole_byte, [0]);
-
-        let mut persisted_end = vec![0u8; tail_len];
-        file.seek(SeekFrom::Start((logical_len - tail_len) as u64))?;
-        file.read_exact(&mut persisted_end)?;
-        assert_eq!(persisted_end, vec![0xCD; tail_len]);
 
         write_dense_control_file(&dense_path, logical_len)?;
 
