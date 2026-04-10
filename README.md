@@ -1,4 +1,15 @@
-# SparseIO
+<p align="center">
+  <img width="500px" src="./docs/static/logo.png">
+</p>
+
+<p align="center">
+  <a href="https://crates.io/crates/sparseio">
+    <img href="https://github.com/matthambrecht/eaql/actions/unit.yml" src="https://github.com/matthambrecht/eaql/actions/unit.yml/badge.svg"/>
+    <img href="https://github.com/matthambrecht/eaql/actions/integration.yml" src="https://github.com/matthambrecht/eaql/actions/integration.yml/badge.svg"/>
+    <img src="https://img.shields.io/crates/v/sparseio.svg" alt="Crates.io">
+    <img alt="docs.rs" src="https://img.shields.io/docsrs/sparse?link=https%3A%2F%2Fdocs.rs%2Fsparseio">
+  </a>
+</p>
 
 SparseIO is a Rust library for sparse, out-of-order materialization of large byte objects.
 

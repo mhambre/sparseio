@@ -1,0 +1,5 @@
+[alias]
+f = "+nightly fmt -- --check"
+c = "clippy --all-targets --all-features -- -D warnings"
+u = "+nightly udeps --workspace --all-targets"
+

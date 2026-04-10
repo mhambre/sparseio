@@ -523,4 +523,60 @@ mod tests {
 
         Ok(())
     }
+
+    #[tokio::test]
+    /// Verifies deleting a missing extent is a no-op rather than an error.
+    async fn delete_missing_extent_is_a_noop() -> Result<(), Box<dyn std::error::Error>> {
+        let path = test_file_path("delete-missing")?;
+        let mut store = Writer::new(path);
+
+        store.delete_extent(1024).await?;
+        store.delete_extent(1024).await?;
+        assert!(store.read_extent(1024).await?.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    /// Verifies same-offset writes follow last-write-wins semantics.
+    async fn same_offset_overwrite_is_last_write_wins() -> Result<(), Box<dyn std::error::Error>> {
+        let path = test_file_path("overwrite")?;
+        let mut store = Writer::new(path);
+
+        store.create_extent(2048, Bytes::from_static(b"first")).await?;
+        store.create_extent(2048, Bytes::from_static(b"second")).await?;
+
+        assert_eq!(store.read_extent(2048).await?, Bytes::from_static(b"second"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    /// Verifies short tail extents round-trip exactly as written.
+    async fn short_tail_extent_round_trips_exact_bytes() -> Result<(), Box<dyn std::error::Error>> {
+        let path = test_file_path("tail")?;
+        let mut store = Writer::new(path);
+
+        store.create_extent(4093, Bytes::from_static(b"tail")).await?;
+        assert_eq!(store.read_extent(4093).await?, Bytes::from_static(b"tail"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    /// Verifies file-open and file-path failures propagate as I/O errors.
+    async fn file_open_and_path_error_propagation_is_preserved() -> Result<(), Box<dyn std::error::Error>> {
+        let missing = test_file_path("missing-source")?;
+        let reader = Reader::new(&missing);
+        let mut buffer = [0u8; 4];
+        let err = reader.read_at(0, &mut buffer).await.expect_err("missing source should fail");
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+
+        let dst = test_file_path("missing-parent/subdir/dst.bin")?;
+        let mut store = Writer::new(&dst);
+        let err = store
+            .create_extent(0, Bytes::from_static(b"data"))
+            .await
+            .expect_err("missing parent should fail");
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+        assert!(store.read_extent(0).await?.is_empty());
+        Ok(())
+    }
 }

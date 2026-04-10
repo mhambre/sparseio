@@ -138,62 +138,18 @@ struct StreamState<R: Reader, W: Writer> {
 mod tests {
     use super::*;
     use futures::StreamExt;
-    use std::collections::HashMap;
+    use crate::utils::{flaky, oracle};
 
-    #[derive(Clone)]
-    struct TestReader {
-        data: Arc<Vec<u8>>,
-    }
-
-    impl TestReader {
-        fn new(data: Vec<u8>) -> Self {
-            Self { data: Arc::new(data) }
-        }
-    }
-
-    impl Reader for TestReader {
-        async fn read_at(&self, offset: usize, buffer: &mut [u8]) -> std::io::Result<usize> {
-            let start = offset.min(self.data.len());
-            let end = (start + buffer.len()).min(self.data.len());
-            let src = &self.data[start..end];
-            buffer[..src.len()].copy_from_slice(src);
-            Ok(src.len())
-        }
-
-        async fn len(&self) -> std::io::Result<usize> {
-            Ok(self.data.len())
-        }
-    }
-
-    #[derive(Default)]
-    struct TestWriter {
-        extents: HashMap<usize, Bytes>,
-    }
-
-    impl Writer for TestWriter {
-        async fn create_extent(&mut self, offset: usize, data: Bytes) -> std::io::Result<()> {
-            self.extents.insert(offset, data);
-            Ok(())
-        }
-
-        async fn read_extent(&self, offset: usize) -> std::io::Result<Bytes> {
-            Ok(self.extents.get(&offset).cloned().unwrap_or_else(Bytes::new))
-        }
-
-        async fn delete_extent(&mut self, offset: usize) -> std::io::Result<()> {
-            self.extents.remove(&offset);
-            Ok(())
-        }
-    }
-
+    /// This test keeps the main buffered-read path honest at an unaligned
+    /// cursor so the cursor math and chunk stitching stay correct.
     #[tokio::test]
     async fn read_reads_across_chunk_boundaries_from_unaligned_cursor() {
         let data: Vec<u8> = (0..128).map(|v| v as u8).collect();
         let io = Arc::new(
             SparseIO::builder()
                 .chunk_size(16)
-                .reader(TestReader::new(data.clone()))
-                .writer(TestWriter::default())
+                .reader(oracle::Reader::new(Bytes::from(data.clone())))
+                .writer(oracle::Writer::default())
                 .build()
                 .await
                 .expect("builder should succeed"),
@@ -209,14 +165,16 @@ mod tests {
         assert_eq!(buf, data[3..43].to_vec());
     }
 
+    /// This test captures the tail-read behavior that the viewer promises:
+    /// it should return only the remaining bytes and zero-fill the rest.
     #[tokio::test]
     async fn read_zero_fills_past_end_of_object() {
         let data: Vec<u8> = (0..32).map(|v| v as u8).collect();
         let io = Arc::new(
             SparseIO::builder()
                 .chunk_size(8)
-                .reader(TestReader::new(data.clone()))
-                .writer(TestWriter::default())
+                .reader(oracle::Reader::new(Bytes::from(data.clone())))
+                .writer(oracle::Writer::default())
                 .build()
                 .await
                 .expect("builder should succeed"),
@@ -233,14 +191,148 @@ mod tests {
         assert!(buf[4..].iter().all(|b| *b == 0));
     }
 
+    /// This test fixes the boundary between the last valid cursor position
+    /// and the first invalid one so EOF handling stays explicit.
+    #[tokio::test]
+    async fn seek_to_eof_succeeds_but_seek_past_eof_fails() {
+        let data: Vec<u8> = (0..32).map(|v| v as u8).collect();
+        let io = Arc::new(
+            SparseIO::builder()
+                .chunk_size(8)
+                .reader(oracle::Reader::new(Bytes::from(data)))
+                .writer(oracle::Writer::default())
+                .build()
+                .await
+                .expect("builder should succeed"),
+        );
+
+        let mut viewer = io.viewer();
+        assert!(viewer.seek(32).is_ok(), "seeking to EOF should be allowed");
+        assert!(viewer.seek(33).is_err(), "seeking past EOF should fail");
+    }
+
+    /// This test guards the degenerate read case so an empty caller buffer
+    /// never mutates the cursor or triggers unnecessary I/O.
+    #[tokio::test]
+    async fn zero_length_buffers_return_immediately_without_moving_cursor() {
+        let data: Vec<u8> = (0..32).map(|v| v as u8).collect();
+        let io = Arc::new(
+            SparseIO::builder()
+                .chunk_size(8)
+                .reader(oracle::Reader::new(Bytes::from(data.clone())))
+                .writer(oracle::Writer::default())
+                .build()
+                .await
+                .expect("builder should succeed"),
+        );
+
+        let mut viewer = io.viewer();
+        viewer.seek(4).expect("seek should succeed");
+        let mut buf = [];
+        let read = viewer.read(&mut buf).await.expect("zero-length read should succeed");
+        assert_eq!(read, 0);
+
+        let mut tail = [0u8; 4];
+        let read = viewer.read(&mut tail).await.expect("follow-up read should succeed");
+        assert_eq!(read, 4);
+        assert_eq!(tail.to_vec(), data[4..8].to_vec());
+    }
+
+    /// This test pins the cursor movement at EOF so partial tail reads do
+    /// not accidentally re-read the same bytes on the next call.
+    #[tokio::test]
+    async fn cursor_advances_after_tail_reads() {
+        let data: Vec<u8> = (0..32).map(|v| v as u8).collect();
+        let io = Arc::new(
+            SparseIO::builder()
+                .chunk_size(8)
+                .reader(oracle::Reader::new(Bytes::from(data.clone())))
+                .writer(oracle::Writer::default())
+                .build()
+                .await
+                .expect("builder should succeed"),
+        );
+
+        let mut viewer = io.viewer();
+        viewer.seek(29).expect("seek should succeed");
+
+        let mut buf = vec![0xAA; 8];
+        let read = viewer.read(&mut buf).await.expect("tail read should succeed");
+        assert_eq!(read, 3);
+        assert_eq!(&buf[..3], &data[29..32]);
+
+        let mut next = [0u8; 1];
+        let read = viewer.read(&mut next).await.expect("follow-up read should succeed");
+        assert_eq!(read, 0);
+    }
+
+    /// This test covers a read that straddles already-cached and
+    /// not-yet-cached bytes so the cursor code cannot rely on a single
+    /// cache state for the whole request.
+    #[tokio::test]
+    async fn mixed_cached_and_uncached_reads_return_contiguous_fixture_bytes() {
+        let data: Vec<u8> = (0..64).map(|v| v as u8).collect();
+        let io = Arc::new(
+            SparseIO::builder()
+                .chunk_size(16)
+                .reader(oracle::Reader::new(Bytes::from(data.clone())))
+                .writer(oracle::Writer::default())
+                .build()
+                .await
+                .expect("builder should succeed"),
+        );
+
+        let mut viewer = io.viewer();
+        viewer.seek(0).expect("seek should succeed");
+        let mut prefix = vec![0u8; 8];
+        let read = viewer.read(&mut prefix).await.expect("initial read should succeed");
+        assert_eq!(read, 8);
+        assert_eq!(prefix, data[0..8].to_vec());
+
+        viewer.seek(4).expect("seek should succeed");
+        let mut mixed = vec![0u8; 24];
+        let read = viewer.read(&mut mixed).await.expect("mixed read should succeed");
+        assert_eq!(read, 24);
+        assert_eq!(mixed, data[4..28].to_vec());
+    }
+
+    /// This test keeps stream error propagation explicit so a later chunk
+    /// failure is delivered to the caller rather than being silently
+    /// swallowed by the unfold loop.
+    #[tokio::test]
+    async fn stream_errors_surface_after_the_first_successful_chunk() {
+        let data: Vec<u8> = (0..48).map(|v| v as u8).collect();
+        let io = Arc::new(
+            SparseIO::builder()
+                .chunk_size(16)
+                .reader(flaky::Reader::fail_once_at(Bytes::from(data), [16]))
+                .writer(oracle::Writer::default())
+                .build()
+                .await
+                .expect("builder should succeed"),
+        );
+
+        let mut viewer = io.viewer();
+        viewer.seek(0).expect("seek should succeed");
+
+        let mut stream = viewer.to_bytestream().await;
+        let first = stream.next().await.expect("stream should yield first chunk").expect("first chunk should succeed");
+        assert_eq!(first, Bytes::from((0u8..16).collect::<Vec<_>>()));
+
+        let second = stream.next().await.expect("stream should yield second item");
+        assert!(second.is_err(), "forced reader failure should reach the stream consumer");
+    }
+
+    /// This test validates the happy-path byte-stream cursor semantics and
+    /// keeps the stream output aligned with the underlying fixture.
     #[tokio::test]
     async fn to_bytestream_streams_from_cursor_to_eof_and_advances_cursor() {
         let data: Vec<u8> = (0..64).map(|v| v as u8).collect();
         let io = Arc::new(
             SparseIO::builder()
                 .chunk_size(16)
-                .reader(TestReader::new(data.clone()))
-                .writer(TestWriter::default())
+                .reader(oracle::Reader::new(Bytes::from(data.clone())))
+                .writer(oracle::Writer::default())
                 .build()
                 .await
                 .expect("builder should succeed"),
@@ -262,14 +354,16 @@ mod tests {
         assert_eq!(read, 0);
     }
 
+    /// This test confirms that creating a stream advances the cursor to
+    /// EOF even if the stream is only partially consumed.
     #[tokio::test]
     async fn to_bytestream_can_be_dropped_early() {
         let data: Vec<u8> = (0..64).map(|v| v as u8).collect();
         let io = Arc::new(
             SparseIO::builder()
                 .chunk_size(16)
-                .reader(TestReader::new(data.clone()))
-                .writer(TestWriter::default())
+                .reader(oracle::Reader::new(Bytes::from(data.clone())))
+                .writer(oracle::Writer::default())
                 .build()
                 .await
                 .expect("builder should succeed"),

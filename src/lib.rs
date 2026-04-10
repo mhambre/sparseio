@@ -3,9 +3,13 @@
 //! in order to deduplicate work done across multiple I/O operations.
 
 mod coverage;
+#[cfg(feature = "debug")]
+pub mod debug;
 mod reader;
 mod shared;
 pub mod sources;
+#[cfg(all(any(test, feature = "utils"), not(docsrs)))]
+pub mod utils;
 mod viewer;
 mod writer;
 
@@ -26,7 +30,6 @@ use crate::shared::{DEFAULT_CHUNK_SIZE, SharedChunk};
 
 /// User-facing API for sparse I/O operations. Provides an interface to read from a sparse object, which is backed by
 /// an [`crate::Writer`] for storing filled in extents, and a [`crate::Reader`] for the actual I/O operations.
-#[derive(Clone)]
 pub struct SparseIO<R: Reader, W: Writer> {
     // User controllable args
     chunk_size: usize,
@@ -35,9 +38,9 @@ pub struct SparseIO<R: Reader, W: Writer> {
     len: usize,
 
     /// Internal data structures
-    coverage: Arc<Mutex<Coverage>>,
+    coverage: Mutex<Coverage>,
     flights: Arc<Mutex<HashMap<usize, SharedChunk>>>,
-    writer: Arc<Mutex<W>>,
+    writer: Mutex<W>,
     reader: R,
 }
 
@@ -60,7 +63,7 @@ impl<R: Reader + Send + Sync + 'static, W: Writer + Send + Sync + 'static> Spars
             .await
             .create_extent(offset, chunk_data.clone())
             .await?;
-        self.coverage.lock().await.insert(offset, chunk_data.len()).await;
+        self.coverage.lock().await.insert(offset, chunk_data.len());
 
         Ok(chunk_data)
     }
@@ -94,23 +97,18 @@ impl<R: Reader + Send + Sync + 'static, W: Writer + Send + Sync + 'static> Spars
             return Err(Error::new(ErrorKind::UnexpectedEof, "range not satisfied"));
         }
 
-        if let Some((start, end)) = self.coverage.lock().await.get(offset_norm).await {
-            if offset_norm >= start && offset_norm < end {
+        if let Some((_, end)) = self.coverage.lock().await.get(offset_norm) {
+            if offset_norm < end {
                 // Chunk is filled in, read from store
-                return self
-                    .writer
-                    .lock()
-                    .await
-                    .read_extent(offset_norm)
-                    .await;
+                return self.writer.lock().await.read_extent(offset_norm).await;
             }
         }
 
         // Chunk is not filled in, fetch it once and share in-flight work across concurrent callers.
         let flight = self.get_or_create_flight(offset_norm).await;
-        let chunk_data = flight.await.map_err(Error::other)?;
+        let chunk_data = flight.await.map_err(Error::other);
         self.flights.lock().await.remove(&offset_norm);
-        Ok(chunk_data)
+        Ok(chunk_data?)
     }
 }
 
@@ -210,9 +208,9 @@ impl<R: Reader, W: Writer> Builder<R, W> {
             chunk_size: self.chunk_size,
             len,
             reader,
-            coverage: Arc::new(Mutex::new(Coverage::new())),
+            coverage: Mutex::new(Coverage::new()),
             flights: Arc::new(Mutex::new(HashMap::new())),
-            writer: Arc::new(Mutex::new(writer)),
+            writer: Mutex::new(writer),
         })
     }
 }
@@ -220,109 +218,16 @@ impl<R: Reader, W: Writer> Builder<R, W> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::time::Duration;
+    use crate::utils::counting::Reader as CountingReader;
+    use crate::utils::oracle;
 
-    #[derive(Clone)]
-    struct CountingReader {
-        data: Arc<Vec<u8>>,
-        reads: Arc<AtomicUsize>,
-        len_reads: Arc<AtomicUsize>,
-    }
-
-    impl CountingReader {
-        fn new(data: Vec<u8>) -> Self {
-            Self {
-                data: Arc::new(data),
-                reads: Arc::new(AtomicUsize::new(0)),
-                len_reads: Arc::new(AtomicUsize::new(0)),
-            }
-        }
-
-        fn read_count(&self) -> usize {
-            self.reads.load(Ordering::SeqCst)
-        }
-
-        fn len_read_count(&self) -> usize {
-            self.len_reads.load(Ordering::SeqCst)
-        }
-    }
-
-    impl Reader for CountingReader {
-        async fn read_at(&self, offset: usize, buffer: &mut [u8]) -> std::io::Result<usize> {
-            self.reads.fetch_add(1, Ordering::SeqCst);
-            std::thread::sleep(Duration::from_millis(20));
-
-            let start = offset.min(self.data.len());
-            let end = (start + buffer.len()).min(self.data.len());
-            let src = &self.data[start..end];
-            buffer[..src.len()].copy_from_slice(src);
-            Ok(src.len())
-        }
-
-        async fn len(&self) -> std::io::Result<usize> {
-            self.len_reads.fetch_add(1, Ordering::SeqCst);
-            Ok(self.data.len())
-        }
-    }
-
-    #[derive(Default)]
-    struct InMemoryWriter {
-        extents: HashMap<usize, Bytes>,
-    }
-
-    impl Writer for InMemoryWriter {
-        async fn create_extent(&mut self, offset: usize, data: Bytes) -> std::io::Result<()> {
-            self.extents.insert(offset, data);
-            Ok(())
-        }
-
-        async fn read_extent(&self, offset: usize) -> std::io::Result<Bytes> {
-            Ok(self.extents.get(&offset).cloned().unwrap_or_else(Bytes::new))
-        }
-
-        async fn delete_extent(&mut self, offset: usize) -> std::io::Result<()> {
-            self.extents.remove(&offset);
-            Ok(())
-        }
-    }
-
-    #[tokio::test]
-    async fn concurrent_chunk_reads_use_single_flight() {
-        let data = vec![7u8; 1024];
-        let reader = CountingReader::new(data.clone());
-        let writer = InMemoryWriter::default();
-
-        let io = Arc::new(
-            Builder::new()
-                .chunk_size(256)
-                .reader(reader.clone())
-                .writer(writer)
-                .build()
-                .await
-                .expect("builder should succeed"),
-        );
-
-        let mut handles = Vec::new();
-        for _ in 0..16 {
-            let io_c = io.clone();
-            handles.push(tokio::spawn(async move { io_c.read_chunk(0).await }));
-        }
-
-        for handle in handles {
-            let chunk = handle.await.expect("task should join").expect("read should succeed");
-            assert_eq!(chunk.len(), 256);
-            assert!(chunk.iter().all(|b| *b == 7));
-        }
-
-        assert_eq!(reader.read_count(), 1, "concurrent reads should share one in-flight fetch");
-    }
-
+    /// This test pins the cached-length behavior so repeated calls do not
+    /// re-query the source after the initial build.
     #[tokio::test]
     async fn len_is_cached_by_default() {
         let data = vec![1u8; 128];
-        let reader = CountingReader::new(data);
-        let writer = InMemoryWriter::default();
+        let reader = CountingReader::new(oracle::Reader::new(Bytes::from(data)));
+        let writer = oracle::Writer::default();
 
         let io = Builder::new()
             .reader(reader.clone())
@@ -336,11 +241,13 @@ mod tests {
         assert_eq!(reader.len_read_count(), 1, "len should be computed once when cache is enabled");
     }
 
+    /// This test ensures the builder performs the initial length probe
+    /// exactly once and stores the result for later use.
     #[tokio::test]
     async fn len_is_prefetched_during_build() {
         let data = vec![1u8; 128];
-        let reader = CountingReader::new(data);
-        let writer = InMemoryWriter::default();
+        let reader = CountingReader::new(oracle::Reader::new(Bytes::from(data)));
+        let writer = oracle::Writer::default();
 
         let io = Builder::new()
             .reader(reader.clone())

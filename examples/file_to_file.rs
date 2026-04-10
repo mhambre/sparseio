@@ -1,7 +1,6 @@
 //! Example Sparse File-to-File Implementation
 mod common;
 
-use std::collections::HashSet;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -14,6 +13,7 @@ use common::sparse_materialization::{
 use sparseio::{
     Builder,
     sources::file::{Reader, Writer},
+    utils::materialization,
 };
 
 /// Simple sparse file-to-file implementation. This example demonstrates how to use
@@ -182,10 +182,16 @@ async fn main() -> std::io::Result<()> {
     .await?;
 
     if result.filled_offsets.len() == result.logical_offsets.len() {
-        verify_full_materialization(&src_path, &dst_path)?;
+        materialization::verify_full_materialization(&src_path, &dst_path)?;
         println!("final verification passed: destination matches source");
     } else {
-        verify_partial_materialization(&src_path, &dst_path, &result.filled_offsets, args.sparse.chunk_size, len)?;
+        materialization::verify_partial_materialization(
+            &src_path,
+            &dst_path,
+            &result.filled_offsets,
+            args.sparse.chunk_size,
+            len,
+        )?;
         println!("partial verification passed: filled chunks match source, unfilled chunks remain zeroed");
     }
 
@@ -214,50 +220,6 @@ fn generate_source_file(path: &Path, len: usize) -> std::io::Result<()> {
     }
 
     file.flush()?;
-    Ok(())
-}
-
-/// Asserts the destination bytes exactly match the source bytes.
-fn verify_full_materialization(src_path: &Path, dst_path: &Path) -> std::io::Result<()> {
-    let src_bytes = fs::read(src_path)?;
-    let dst_bytes = fs::read(dst_path)?;
-    assert_eq!(src_bytes, dst_bytes, "destination bytes must match source bytes");
-    Ok(())
-}
-
-/// Asserts filled chunks match source data and unfilled chunks remain zeroed.
-fn verify_partial_materialization(
-    src_path: &Path,
-    dst_path: &Path,
-    filled_offsets: &HashSet<usize>,
-    chunk_size: usize,
-    len: usize,
-) -> std::io::Result<()> {
-    let mut src_file = fs::File::open(src_path)?;
-    let mut dst_file = fs::File::open(dst_path)?;
-    let dst_len = fs::metadata(dst_path)?.len() as usize;
-
-    for offset in (0..len).step_by(chunk_size) {
-        let chunk_len = (len - offset).min(chunk_size);
-        src_file.seek(SeekFrom::Start(offset as u64))?;
-
-        let mut src_buf = vec![0u8; chunk_len];
-        let mut dst_buf = vec![0u8; chunk_len];
-        src_file.read_exact(&mut src_buf)?;
-
-        if offset < dst_len {
-            let readable = chunk_len.min(dst_len - offset);
-            dst_file.seek(SeekFrom::Start(offset as u64))?;
-            dst_file.read_exact(&mut dst_buf[..readable])?;
-        }
-
-        if filled_offsets.contains(&offset) {
-            assert_eq!(dst_buf, src_buf, "filled chunk at offset {} must match source", offset);
-        } else {
-            assert!(dst_buf.iter().all(|byte| *byte == 0), "unfilled chunk at offset {} should remain zeroed", offset);
-        }
-    }
-
     Ok(())
 }
 

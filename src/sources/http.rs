@@ -185,12 +185,30 @@ pub type HttpReader = Reader;
 
 #[cfg(test)]
 mod tests {
-    use super::Reader;
+    use super::{parse_total_from_content_range, Reader};
     use crate::Reader as _;
 
+    /// This test keeps the override path isolated from any HTTP probing so
+    /// callers can bypass unreliable server metadata completely.
     #[tokio::test]
     async fn len_uses_override_without_network() {
         let reader = Reader::new("http://127.0.0.1:1/unreachable").with_len_override(12345);
         assert_eq!(reader.len().await.expect("len override should be returned"), 12345);
+    }
+
+    /// This test pins the plain Content-Range parser so the HTTP reader can
+    /// safely interpret a server's range metadata.
+    #[test]
+    fn parse_total_from_content_range_extracts_total_length() {
+        assert_eq!(parse_total_from_content_range("bytes 0-0/99"), Some(99));
+        assert_eq!(parse_total_from_content_range("bytes 10-19/2048"), Some(2048));
+    }
+
+    /// This test keeps malformed or wildcard totals from being misread as
+    /// valid lengths.
+    #[test]
+    fn parse_total_from_content_range_rejects_malformed_or_unspecified_totals() {
+        assert_eq!(parse_total_from_content_range("bytes 0-0/*"), None);
+        assert_eq!(parse_total_from_content_range("not-a-range"), None);
     }
 }

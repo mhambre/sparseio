@@ -3,5 +3,8 @@
 debug
 target
 
+# Mac specific files
+.DS_Store
+
 # Debug artifacts
 *.vgcore
