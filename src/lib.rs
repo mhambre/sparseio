@@ -8,7 +8,7 @@ pub mod debug;
 mod reader;
 mod shared;
 pub mod sources;
-#[cfg(all(any(test, feature = "utils"), not(docsrs)))]
+#[cfg(any(test, feature = "utils"))]
 pub mod utils;
 mod viewer;
 mod writer;
@@ -25,7 +25,7 @@ pub use viewer::Viewer;
 pub use writer::Writer;
 
 use crate::coverage::Coverage;
-use crate::shared::{DEFAULT_CHUNK_SIZE, SharedChunk};
+use crate::shared::{DEFAULT_CHUNK_SIZE, SharedChunk, SharedIoError};
 
 /// User-facing API for sparse I/O operations. Provides an interface to read from a sparse object, which is backed by
 /// an [`crate::Writer`] for storing filled in extents, and a [`crate::Reader`] for the actual I/O operations.
@@ -73,7 +73,7 @@ impl<R: Reader + Send + Sync + 'static, W: Writer + Send + Sync + 'static> Spars
         let io = self.clone();
         let shared = io
             .fetch_and_store_chunk(offset)
-            .map(|res| res.map_err(|err| err.to_string()))
+            .map(|res| res.map_err(SharedIoError::from))
             .boxed()
             .shared();
         flights.insert(offset, shared.clone());
@@ -105,7 +105,7 @@ impl<R: Reader + Send + Sync + 'static, W: Writer + Send + Sync + 'static> Spars
 
         // Chunk is not filled in, fetch it once and share in-flight work across concurrent callers.
         let flight = self.get_or_create_flight(offset_norm).await;
-        let chunk_data = flight.await.map_err(Error::other);
+        let chunk_data = flight.await.map_err(SharedIoError::into_io_error);
         self.flights.lock().await.remove(&offset_norm);
         chunk_data
     }
@@ -222,6 +222,19 @@ mod tests {
     use crate::utils::counting::Reader as CountingReader;
     use crate::utils::oracle;
 
+    #[derive(Clone)]
+    struct ErrorReader;
+
+    impl Reader for ErrorReader {
+        async fn read_at(&self, _offset: usize, _buffer: &mut [u8]) -> Result<usize> {
+            Err(Error::new(ErrorKind::PermissionDenied, "upstream denied"))
+        }
+
+        async fn len(&self) -> Result<usize> {
+            Ok(128)
+        }
+    }
+
     /// This test pins the cached-length behavior so repeated calls do not
     /// re-query the source after the initial build.
     #[tokio::test]
@@ -261,5 +274,23 @@ mod tests {
         assert_eq!(io.len(), 128);
         assert_eq!(io.len(), 128);
         assert_eq!(reader.len_read_count(), 1, "len() should not trigger extra source reads");
+    }
+
+    /// This test keeps in-flight error propagation consistent with direct
+    /// I/O failures so callers can still inspect the original error kind.
+    #[tokio::test]
+    async fn inflight_errors_preserve_error_kind() {
+        let io = Arc::new(
+            Builder::new()
+                .chunk_size(16)
+                .reader(ErrorReader)
+                .writer(oracle::Writer::default())
+                .build()
+                .await
+                .expect("builder should succeed"),
+        );
+
+        let err = io.read_chunk(0).await.expect_err("read should fail");
+        assert_eq!(err.kind(), ErrorKind::PermissionDenied);
     }
 }

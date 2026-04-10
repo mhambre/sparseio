@@ -11,6 +11,7 @@ use std::time::Duration;
 use clap::Args;
 use rand::Rng;
 use rand::seq::SliceRandom;
+use tokio::time::sleep;
 
 use crate::common::sparse_fill_visualizer::render_sparse_fill_bar;
 
@@ -182,7 +183,7 @@ where
         })?;
 
         if config.options.sleep_ms > 0 {
-            std::thread::sleep(Duration::from_millis(config.options.sleep_ms));
+            sleep(Duration::from_millis(config.options.sleep_ms)).await;
         }
     }
 

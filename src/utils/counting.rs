@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use tokio::sync::Mutex;
+use tokio::time::sleep;
 
 /// Counts reader calls while delegating all behavior to an inner reader.
 ///
@@ -65,7 +66,7 @@ where
     async fn read_at(&self, offset: usize, buffer: &mut [u8]) -> std::io::Result<usize> {
         self.reads.fetch_add(1, Ordering::SeqCst);
         if let Some(delay) = self.read_delay {
-            std::thread::sleep(delay);
+            sleep(delay).await;
         }
         self.inner.read_at(offset, buffer).await
     }

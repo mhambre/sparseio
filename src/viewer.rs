@@ -77,11 +77,14 @@ impl<R: Reader, W: Writer> Viewer<R, W> {
                     let available = chunk.len() - in_chunk; // Front partial case
                     let remaining = state.end - state.cursor;
                     let emit_len = available.min(remaining); // Back partial case
-                    let out = Bytes::copy_from_slice(&chunk[in_chunk..in_chunk + emit_len]);
+                    let out = chunk.slice(in_chunk..in_chunk + emit_len);
                     state.cursor += emit_len;
                     Some((Ok(out), state))
                 },
-                Err(err) => Some((Err(err), state)),
+                Err(err) => {
+                    state.cursor = state.end;
+                    Some((Err(err), state))
+                },
             }
         }))
     }

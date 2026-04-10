@@ -38,3 +38,15 @@ jobs:
 
       - name: Clippy
         run: cargo clippy --all-features --all-targets -- -D warnings
+
+      - name: Feature compile checks
+        run: |
+          cargo check
+          cargo check --tests
+          cargo check --features file
+          cargo check --features http
+          cargo check --features debug
+          cargo check --all-features
+
+      - name: Docs.rs feature set
+        run: RUSTDOCFLAGS='--cfg docsrs' cargo doc --all-features --no-deps

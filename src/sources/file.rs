@@ -192,6 +192,7 @@ impl crate::Writer for Writer {
 
         file.seek(SeekFrom::Start(offset as u64)).await?;
         file.write_all(data.as_ref()).await?;
+        file.flush().await?;
         self.extents.insert(offset, Extent { offset, length });
 
         #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -519,7 +520,7 @@ mod tests {
 
         assert!(
             sparse_bytes < dense_bytes / 8,
-            "expected sparse file to use much less disk on macOS: sparse={sparse_bytes}B dense={dense_bytes}B"
+            "expected sparse file to use much less disk than dense files: sparse={sparse_bytes}B dense={dense_bytes}B"
         );
 
         Ok(())
