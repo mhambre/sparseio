@@ -27,7 +27,7 @@ path = "examples/file_to_file.rs"
 required-features = ["file"]
 
 [dependencies]
-tokio = { version = "1.51.0", features = ["sync", "macros", "fs", "io-util", "rt-multi-thread"] }
+tokio = { version = "1.51.0", features = ["sync", "macros", "fs", "io-util", "rt-multi-thread", "time"] }
 futures = "0.3.32"
 bytes = "1.11.1"
 libc = { version = "0.2", optional = true }

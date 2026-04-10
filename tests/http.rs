@@ -184,3 +184,27 @@ async fn mismatched_content_range_is_rejected() {
     let mut buf = [0u8; 4];
     assert!(reader.read_at(4, &mut buf).await.is_err(), "mismatched ranges must be rejected");
 }
+
+/// This test rejects truncated mid-object 206 responses so SparseIO never
+/// caches a partial chunk unless the server proves it reached EOF.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn truncated_partial_content_before_eof_is_rejected() {
+    tracing::init();
+
+    let mut server = mockito::Server::new_async().await;
+    let _range = server
+        .mock("GET", "/asset")
+        .match_header("range", Matcher::Exact("bytes=4-7".to_string()))
+        .with_status(206)
+        .with_header("content-range", "bytes 4-5/16")
+        .with_body("ef")
+        .create_async()
+        .await;
+    let reader = Reader::with_client(reqwest::Client::new(), server.url() + "/asset");
+
+    let mut buf = [0u8; 4];
+    assert!(
+        reader.read_at(4, &mut buf).await.is_err(),
+        "short mid-object 206 responses must be rejected"
+    );
+}

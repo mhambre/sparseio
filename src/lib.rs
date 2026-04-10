@@ -188,7 +188,15 @@ impl<R, W> Builder<R, W> {
     }
 }
 
-impl<R: Reader, W: Writer> Builder<R, W> {
+impl<R, W> Builder<R, W>
+where
+    R: Reader + Send + Sync + 'static,
+    W: Writer + Send + Sync + 'static,
+{
+    /// Builds a [`SparseIO`] instance from this builder.
+    ///
+    /// The configured reader and writer must be `Send + Sync + 'static` so the
+    /// resulting [`SparseIO`] can be used by the library's async and streaming APIs.
     pub async fn build(self) -> Result<SparseIO<R, W>> {
         // Required fields
         let reader = self

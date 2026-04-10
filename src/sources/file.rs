@@ -45,8 +45,20 @@ impl crate::Reader for Reader {
     async fn read_at(&self, offset: usize, buffer: &mut [u8]) -> std::io::Result<usize> {
         let mut file = tokio::fs::File::open(&self.path).await?;
         file.seek(SeekFrom::Start(offset as u64)).await?;
-        let read_len = file.read(buffer).await?;
-        Ok(read_len)
+
+        // Read in a loop to handle short reads, which can occur because
+        // there's no guarantee from AsyncReadExt::read that it will fill
+        // the entire buffer in one call.
+        let mut total_read = 0usize;
+        while total_read < buffer.len() {
+            let read_len = file.read(&mut buffer[total_read..]).await?;
+            if read_len == 0 {
+                break;
+            }
+            total_read += read_len;
+        }
+
+        Ok(total_read)
     }
 
     /// Returns the source file length in bytes.

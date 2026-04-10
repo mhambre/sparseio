@@ -82,10 +82,10 @@ impl crate::Reader for Reader {
             return Ok(0);
         }
 
-        let end = offset
+        let requested_end = offset
             .checked_add(buffer.len().saturating_sub(1))
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "range end overflow"))?;
-        let range_header = format!("bytes={offset}-{end}");
+        let range_header = format!("bytes={offset}-{requested_end}");
 
         let mut response = self
             .client
@@ -97,7 +97,7 @@ impl crate::Reader for Reader {
 
         match response.status() {
             StatusCode::PARTIAL_CONTENT => {
-                let (start, end, _) = response
+                let (start, response_end, total) = response
                     .headers()
                     .get(reqwest::header::CONTENT_RANGE)
                     .and_then(|value| value.to_str().ok())
@@ -111,7 +111,30 @@ impl crate::Reader for Reader {
                     ));
                 }
 
-                let advertised_len = end
+                let expected_end = if response_end == requested_end {
+                    requested_end
+                } else if let Some(total) = total {
+                    let eof_end = total.checked_sub(1).ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidData, "invalid Content-Range total length")
+                    })?;
+                    if response_end == eof_end && response_end < requested_end {
+                        response_end
+                    } else {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!(
+                                "HTTP range response ended at {response_end}, expected {requested_end}"
+                            ),
+                        ));
+                    }
+                } else {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("HTTP range response ended at {response_end}, expected {requested_end}"),
+                    ));
+                };
+
+                let advertised_len = expected_end
                     .checked_sub(start)
                     .and_then(|len| len.checked_add(1))
                     .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid Content-Range length"))?;
