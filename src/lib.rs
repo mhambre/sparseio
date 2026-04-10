@@ -3,23 +3,21 @@
 //! in order to deduplicate work done across multiple I/O operations.
 
 mod coverage;
-mod error;
-pub mod reader;
+mod reader;
 mod shared;
 pub mod sources;
 mod viewer;
-pub mod writer;
+mod writer;
 
 use std::collections::HashMap;
+use std::io::{Error, ErrorKind, Result};
 use std::sync::Arc;
 
 use bytes::Bytes;
-pub use error::{Error, Result};
 use futures::FutureExt;
-use futures::future::BoxFuture;
 pub use reader::Reader;
 pub use viewer::Viewer;
-pub use writer::{Extent, Writer};
+pub use writer::Writer;
 
 use tokio::sync::Mutex;
 
@@ -27,16 +25,19 @@ use crate::coverage::Coverage;
 use crate::shared::{DEFAULT_CHUNK_SIZE, SharedChunk};
 
 /// User-facing API for sparse I/O operations. Provides an interface to read from a sparse object, which is backed by
-/// an [`crate::writer::Writer`] for storing filled in extents, and a [`crate::reader::Reader`] for the actual I/O operations.
+/// an [`crate::Writer`] for storing filled in extents, and a [`crate::Reader`] for the actual I/O operations.
 #[derive(Clone)]
 pub struct SparseIO<R: Reader, W: Writer> {
-    len: usize,
+    // User controllable args
     chunk_size: usize,
+
+    // Internal states
+    len: usize,
 
     /// Internal data structures
     coverage: Arc<Mutex<Coverage>>,
-    writer: Arc<Mutex<W>>,
     flights: Arc<Mutex<HashMap<usize, SharedChunk>>>,
+    writer: Arc<Mutex<W>>,
     reader: R,
 }
 
@@ -49,38 +50,36 @@ impl<R: Reader + Send + Sync + 'static, W: Writer + Send + Sync + 'static> Spars
         Ok(Bytes::from(buffer))
     }
 
-    /// Gets an existing flight or creates a new one for the given offset. Offset must be aligned to the chunk size,
-    /// and should be validated as such by the caller before calling this method. Offset must be aligned to the chunk
-    /// size by this point.
-    async fn get_or_create_flight(self: &Arc<Self>, offset: usize) -> SharedChunk {
-        let mut flights = self.flights.lock().await;
-
-        if let Some(flight) = flights.get(&offset) {
-            flight.clone()
-        } else {
-            let self_c = self.clone();
-            let fut: BoxFuture<'static, std::result::Result<Bytes, String>> = self_c.get_new_chunk(offset).boxed();
-            let shared = fut.shared();
-            flights.insert(offset, shared.clone());
-            shared
-        }
-    }
-
-    /// Fully internal function for managing the flow from Read -> Flight -> Store -> Update Coverage
-    async fn get_new_chunk(self: Arc<Self>, offset: usize) -> std::result::Result<Bytes, String> {
-        let self_c = self.clone();
-        let chunk_data = self_c.fetch_chunk_from_source(offset).await.map_err(|e| e.to_string())?;
+    /// Fully internal function for managing the flow from Read -> Store -> Update Coverage.
+    async fn fetch_and_store_chunk(self: Arc<Self>, offset: usize) -> Result<Bytes> {
+        let chunk_data = self.fetch_chunk_from_source(offset).await?;
 
         // Write to store and update coverage
         self.writer
             .lock()
             .await
             .create_extent(offset, chunk_data.clone())
-            .await
-            .map_err(|e| e.to_string())?;
+            .await?;
         self.coverage.lock().await.insert(offset, chunk_data.len()).await;
 
         Ok(chunk_data)
+    }
+
+    /// Returns an existing in-flight chunk future for `offset`, or creates one.
+    async fn get_or_create_flight(self: &Arc<Self>, offset: usize) -> SharedChunk {
+        let mut flights = self.flights.lock().await;
+        if let Some(flight) = flights.get(&offset) {
+            return flight.clone();
+        }
+
+        let io = self.clone();
+        let shared = io
+            .fetch_and_store_chunk(offset)
+            .map(|res| res.map_err(|err| err.to_string()))
+            .boxed()
+            .shared();
+        flights.insert(offset, shared.clone());
+        shared
     }
 
     /// Internal function to read a chunk of data at the given offset. This function will first check the coverage
@@ -88,41 +87,37 @@ impl<R: Reader + Send + Sync + 'static, W: Writer + Send + Sync + 'static> Spars
     /// from the source, write it to the store, update coverage, and then return the data.
     ///
     /// Leveraged by the reader to construct a stream, extract a chunk of data for a read, etc.
-    async fn read_chunk(self: &Arc<Self>, offset: usize) -> Result<Bytes> {
+    pub async fn read_chunk(self: &Arc<Self>, offset: usize) -> Result<Bytes> {
         // Check coverage to see if chunk is filled in
         let offset_norm = self.normalize_offset(offset);
-        if let Some((start, end)) = self.coverage.lock().await.get(offset).await {
-            if offset >= start && offset < end {
-                // Chunk is filled in, read from store
-                if let Some(_) = self.writer.lock().await.read_extent(offset).await? {
-                    unimplemented!("Read logic from store not implemented yet, should return bytes not extent");
-                } else {
-                    // This should never happen, as coverage indicates this chunk is filled in, but store does not have it
-                    return Err(Error::Other(format!(
-                        "Inconsistent state: coverage indicates chunk at offset {} is filled in, but store does not have it",
-                        offset
-                    )));
-                }
-            } else {
-                return Err(Error::OOB);
-            }
-        } else {
-            // Chunk is not filled in, fetch from source, write to store, update coverage
-            let chunk_data = self
-                .get_or_create_flight(offset_norm)
-                .await
-                .await
-                .map_err(|e| Error::Other(e))?;
-
-            Ok(chunk_data)
+        if offset_norm >= self.len() {
+            return Err(Error::new(ErrorKind::UnexpectedEof, "range not satisfied"));
         }
+
+        if let Some((start, end)) = self.coverage.lock().await.get(offset_norm).await {
+            if offset_norm >= start && offset_norm < end {
+                // Chunk is filled in, read from store
+                return self
+                    .writer
+                    .lock()
+                    .await
+                    .read_extent(offset_norm)
+                    .await;
+            }
+        }
+
+        // Chunk is not filled in, fetch it once and share in-flight work across concurrent callers.
+        let flight = self.get_or_create_flight(offset_norm).await;
+        let chunk_data = flight.await.map_err(Error::other)?;
+        self.flights.lock().await.remove(&offset_norm);
+        Ok(chunk_data)
     }
 }
 
 impl<R: Reader, W: Writer> SparseIO<R, W> {
-    /// Returns a new [`crate::SparseIOBuilder`] to construct a [`crate::SparseIO`] instance.
-    pub fn builder() -> SparseIOBuilder<R, W> {
-        SparseIOBuilder::new()
+    /// Returns a new [`crate::Builder`] to construct a [`crate::SparseIO`] instance.
+    pub fn builder() -> Builder<R, W> {
+        Builder::new()
     }
 
     /// Gets the total length of the underlying sparse object.
@@ -142,17 +137,17 @@ impl<R: Reader, W: Writer> SparseIO<R, W> {
     }
 }
 
-pub struct SparseIOBuilder<R, W> {
-    len: Option<usize>,
+/// Builder pattern for constructing a [`crate::SparseIO`] instance. This allows callers to specify required
+/// and optional fields, and provides validation before constructing the final instance.
+pub struct Builder<R, W> {
     chunk_size: usize,
     reader: Option<R>,
     writer: Option<W>,
 }
 
-impl<R, W> Default for SparseIOBuilder<R, W> {
+impl<R, W> Default for Builder<R, W> {
     fn default() -> Self {
         Self {
-            len: None,
             chunk_size: DEFAULT_CHUNK_SIZE,
             reader: None,
             writer: None,
@@ -160,15 +155,9 @@ impl<R, W> Default for SparseIOBuilder<R, W> {
     }
 }
 
-impl<R, W> SparseIOBuilder<R, W> {
+impl<R, W> Builder<R, W> {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    /// Sets the final length of the sparse object. This is a required field.
-    pub fn len(mut self, len: usize) -> Self {
-        self.len = Some(len);
-        self
     }
 
     /// Sets the chunk size for the sparse object. This is an optional field, and
@@ -179,43 +168,190 @@ impl<R, W> SparseIOBuilder<R, W> {
     }
 
     /// Sets the source reader for the sparse object. This is a required field.
+    /// The reader defines how the sparse I/O library fetches data from the source,
+    /// and can either be constructed manually from the [`crate::Reader`] trait,
+    /// or from an implementation defined in the [`crate::sources`] module.
     pub fn reader(mut self, reader: R) -> Self {
         self.reader = Some(reader);
         self
     }
 
     /// Sets the extent store for the sparse object. This is a required field.
+    /// The writer defines how the sparse I/O library stores data to the destination for
+    /// caching. It can either be constructed manually from the [`crate::Writer`] trait,
+    /// or from an implementation defined in the [`crate::sources`] module.
     pub fn writer(mut self, writer: W) -> Self {
         self.writer = Some(writer);
         self
     }
 }
 
-impl<R: Reader, W: Writer> SparseIOBuilder<R, W> {
-    pub fn build(self) -> Result<SparseIO<R, W>> {
+impl<R: Reader, W: Writer> Builder<R, W> {
+    pub async fn build(self) -> Result<SparseIO<R, W>> {
         // Required fields
-        let len = self
-            .len
-            .ok_or_else(|| Error::Other("SparseIOBuilder is missing required field: len".to_string()))?;
         let reader = self
             .reader
-            .ok_or_else(|| Error::Other("SparseIOBuilder is missing required field: reader".to_string()))?;
+            .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "builder missing required field: reader"))?;
         let writer = self
             .writer
-            .ok_or_else(|| Error::Other("SparseIOBuilder is missing required field: writer".to_string()))?;
+            .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "builder missing required field: writer"))?;
 
         // Optional fields
         if self.chunk_size == 0 {
-            return Err(Error::Other("SparseIOBuilder field chunk_size must be greater than zero".to_string()));
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "builder field chunk_size must be greater than zero",
+            ));
         }
 
+        let len = reader.len().await?;
+
         Ok(SparseIO {
-            len,
             chunk_size: self.chunk_size,
+            len,
             reader,
             coverage: Arc::new(Mutex::new(Coverage::new())),
-            writer: Arc::new(Mutex::new(writer)),
             flights: Arc::new(Mutex::new(HashMap::new())),
+            writer: Arc::new(Mutex::new(writer)),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
+    #[derive(Clone)]
+    struct CountingReader {
+        data: Arc<Vec<u8>>,
+        reads: Arc<AtomicUsize>,
+        len_reads: Arc<AtomicUsize>,
+    }
+
+    impl CountingReader {
+        fn new(data: Vec<u8>) -> Self {
+            Self {
+                data: Arc::new(data),
+                reads: Arc::new(AtomicUsize::new(0)),
+                len_reads: Arc::new(AtomicUsize::new(0)),
+            }
+        }
+
+        fn read_count(&self) -> usize {
+            self.reads.load(Ordering::SeqCst)
+        }
+
+        fn len_read_count(&self) -> usize {
+            self.len_reads.load(Ordering::SeqCst)
+        }
+    }
+
+    impl Reader for CountingReader {
+        async fn read_at(&self, offset: usize, buffer: &mut [u8]) -> std::io::Result<usize> {
+            self.reads.fetch_add(1, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(20));
+
+            let start = offset.min(self.data.len());
+            let end = (start + buffer.len()).min(self.data.len());
+            let src = &self.data[start..end];
+            buffer[..src.len()].copy_from_slice(src);
+            Ok(src.len())
+        }
+
+        async fn len(&self) -> std::io::Result<usize> {
+            self.len_reads.fetch_add(1, Ordering::SeqCst);
+            Ok(self.data.len())
+        }
+    }
+
+    #[derive(Default)]
+    struct InMemoryWriter {
+        extents: HashMap<usize, Bytes>,
+    }
+
+    impl Writer for InMemoryWriter {
+        async fn create_extent(&mut self, offset: usize, data: Bytes) -> std::io::Result<()> {
+            self.extents.insert(offset, data);
+            Ok(())
+        }
+
+        async fn read_extent(&self, offset: usize) -> std::io::Result<Bytes> {
+            Ok(self.extents.get(&offset).cloned().unwrap_or_else(Bytes::new))
+        }
+
+        async fn delete_extent(&mut self, offset: usize) -> std::io::Result<()> {
+            self.extents.remove(&offset);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn concurrent_chunk_reads_use_single_flight() {
+        let data = vec![7u8; 1024];
+        let reader = CountingReader::new(data.clone());
+        let writer = InMemoryWriter::default();
+
+        let io = Arc::new(
+            Builder::new()
+                .chunk_size(256)
+                .reader(reader.clone())
+                .writer(writer)
+                .build()
+                .await
+                .expect("builder should succeed"),
+        );
+
+        let mut handles = Vec::new();
+        for _ in 0..16 {
+            let io_c = io.clone();
+            handles.push(tokio::spawn(async move { io_c.read_chunk(0).await }));
+        }
+
+        for handle in handles {
+            let chunk = handle.await.expect("task should join").expect("read should succeed");
+            assert_eq!(chunk.len(), 256);
+            assert!(chunk.iter().all(|b| *b == 7));
+        }
+
+        assert_eq!(reader.read_count(), 1, "concurrent reads should share one in-flight fetch");
+    }
+
+    #[tokio::test]
+    async fn len_is_cached_by_default() {
+        let data = vec![1u8; 128];
+        let reader = CountingReader::new(data);
+        let writer = InMemoryWriter::default();
+
+        let io = Builder::new()
+            .reader(reader.clone())
+            .writer(writer)
+            .build()
+            .await
+            .expect("builder should succeed");
+
+        assert_eq!(io.len(), 128);
+        assert_eq!(io.len(), 128);
+        assert_eq!(reader.len_read_count(), 1, "len should be computed once when cache is enabled");
+    }
+
+    #[tokio::test]
+    async fn len_is_prefetched_during_build() {
+        let data = vec![1u8; 128];
+        let reader = CountingReader::new(data);
+        let writer = InMemoryWriter::default();
+
+        let io = Builder::new()
+            .reader(reader.clone())
+            .writer(writer)
+            .build()
+            .await
+            .expect("builder should succeed");
+
+        assert_eq!(reader.len_read_count(), 1, "build should fetch length exactly once");
+        assert_eq!(io.len(), 128);
+        assert_eq!(io.len(), 128);
+        assert_eq!(reader.len_read_count(), 1, "len() should not trigger extra source reads");
     }
 }

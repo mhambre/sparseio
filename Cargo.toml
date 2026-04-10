@@ -9,9 +9,8 @@ repository = "https://github.com/mhambre/sparseio"
 license = "Apache-2.0"
 
 [features]
-file = []
-memory = []
-http = []
+file = ["dep:libc"]
+http = ["dep:reqwest"]
 
 [[example]]
 name = "file_to_file"
@@ -20,11 +19,12 @@ required-features = ["file"]
 
 [dependencies]
 tokio = { version = "1.51.0", features = ["sync", "macros", "fs", "io-util", "rt-multi-thread"] }
-thiserror = "2"
-dashmap = "6.1.0"
 futures = "0.3.32"
 bytes = "1.11.1"
+libc = { version = "0.2", optional = true }
+reqwest = { version = "0.12", optional = true, default-features = false, features = ["rustls-tls"] }
 
 [dev-dependencies]
 clap = { version = "4.6.0", features = ["derive"] }
 async-stream = "0.3.6"
+rand = "0.8.5"

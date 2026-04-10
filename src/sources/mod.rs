@@ -1,11 +1,8 @@
-//! Quick and dirty implementations of the [`crate::Reader`], and [`crate::Writer`] for
-//! dealing with common use cases (File -> Sparse Memory, File -> Sparse File, HTTP Range Reader -> Sparse File).
-//!
-//! While these can be used as-is, they are primarily intended as examples and starting points for building your own custom sources.
+//! Implementations of the [`crate::Reader`], and [`crate::Writer`] for dealing with common use cases. Usages of
+//! such sources are shown in the examples, and they can be used as building blocks for more complex custom sources,
+//! references for building your own source, or as-is.
 
 #[cfg(feature = "file")]
 pub mod file;
 #[cfg(feature = "http")]
 pub mod http;
-#[cfg(feature = "memory")]
-pub mod memory;

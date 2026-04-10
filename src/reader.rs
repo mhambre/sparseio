@@ -10,5 +10,5 @@ pub trait Reader: Send {
     ) -> impl std::future::Future<Output = std::io::Result<usize>> + Send;
 
     /// Get the length of the full object.
-    fn len(&self) -> impl std::future::Future<Output = usize> + Send;
+    fn len(&self) -> impl std::future::Future<Output = std::io::Result<usize>> + Send;
 }
