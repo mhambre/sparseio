@@ -4,11 +4,13 @@
 //! drives materialization, and reports generic progress while delegating
 //! backend-specific inspection to caller-provided callbacks.
 
-use clap::Args;
-use rand::{Rng, seq::SliceRandom};
 use std::collections::HashSet;
 use std::future::Future;
 use std::time::Duration;
+
+use clap::Args;
+use rand::Rng;
+use rand::seq::SliceRandom;
 
 use crate::common::sparse_fill_visualizer::render_sparse_fill_bar;
 

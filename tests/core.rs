@@ -3,8 +3,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use futures::StreamExt;
 use sparseio::Builder;
-use sparseio::utils::{counting, flaky, oracle};
-use sparseio::utils::{fixture, tracing};
+use sparseio::utils::{counting, fixture, flaky, oracle, tracing};
 
 /// Builds a SparseIO instance for the integration tests using the supplied
 /// reader, writer, and chunk size.
@@ -55,13 +54,7 @@ async fn builder_validation_rejects_missing_fields_and_zero_chunk_size() {
     };
     assert_eq!(missing_writer.kind(), std::io::ErrorKind::InvalidInput);
 
-    let zero_chunk = match Builder::new()
-        .chunk_size(0)
-        .reader(reader)
-        .writer(writer)
-        .build()
-        .await
-    {
+    let zero_chunk = match Builder::new().chunk_size(0).reader(reader).writer(writer).build().await {
         Ok(_) => panic!("zero chunk size should fail"),
         Err(err) => err,
     };
@@ -76,12 +69,14 @@ async fn aligned_and_unaligned_viewer_reads_match_the_fixture() {
     tracing::init();
 
     let fixture = fixture::bytes(96);
-    let io = Arc::new(build_io(
-        counting::Reader::new(oracle::Reader::new(fixture.clone())),
-        counting::Writer::new(oracle::Writer::default()),
-        16,
-    )
-    .await);
+    let io = Arc::new(
+        build_io(
+            counting::Reader::new(oracle::Reader::new(fixture.clone())),
+            counting::Writer::new(oracle::Writer::default()),
+            16,
+        )
+        .await,
+    );
 
     let mut viewer = io.viewer();
     viewer.seek(5).expect("seek should succeed");
@@ -182,12 +177,14 @@ async fn bytestream_matches_the_fixture_payload() {
     tracing::init();
 
     let fixture = fixture::bytes(80);
-    let io = Arc::new(build_io(
-        counting::Reader::new(oracle::Reader::new(fixture.clone())),
-        counting::Writer::new(oracle::Writer::default()),
-        16,
-    )
-    .await);
+    let io = Arc::new(
+        build_io(
+            counting::Reader::new(oracle::Reader::new(fixture.clone())),
+            counting::Writer::new(oracle::Writer::default()),
+            16,
+        )
+        .await,
+    );
 
     let mut viewer = io.viewer();
     viewer.seek(7).expect("seek should succeed");

@@ -12,7 +12,8 @@ use bytes::Bytes;
 /// Some examples include:
 /// - A networked store that uses KV storage to store extents, allowing for distributed sparse objects.
 /// - A file-backed store that uses an OS-provided sparse file <https://wiki.archlinux.org/title/Sparse_file>.
-/// - A hybrid-store that caches hot areas of files to disk and less-frequently accessed portions to cheaper storage like S3.
+/// - A hybrid-store that caches hot areas of files to disk and less-frequently accessed portions to cheaper storage
+///   like S3.
 pub trait Writer: Send {
     /// Creates or overwrites the extent at `offset` with `data`.
     ///

@@ -1,7 +1,8 @@
 #![cfg(feature = "http")]
 
 use ::mockito::Matcher;
-use sparseio::{Reader as _, sources::http::Reader};
+use sparseio::Reader as _;
+use sparseio::sources::http::Reader;
 use sparseio::utils::tracing;
 
 /// This test covers the simplest discovery path so HTTP length probing
@@ -29,11 +30,7 @@ async fn content_range_fallback_discovers_length() {
     tracing::init();
 
     let mut server = mockito::Server::new_async().await;
-    let _head = server
-        .mock("HEAD", "/asset")
-        .with_status(200)
-        .create_async()
-        .await;
+    let _head = server.mock("HEAD", "/asset").with_status(200).create_async().await;
     let _range = server
         .mock("GET", "/asset")
         .match_header("range", "bytes=0-0")
@@ -54,11 +51,7 @@ async fn ok_body_length_fallback_discovers_length() {
     tracing::init();
 
     let mut server = mockito::Server::new_async().await;
-    let _head = server
-        .mock("HEAD", "/asset")
-        .with_status(405)
-        .create_async()
-        .await;
+    let _head = server.mock("HEAD", "/asset").with_status(405).create_async().await;
     let _range = server
         .mock("GET", "/asset")
         .match_header("range", "bytes=0-0")

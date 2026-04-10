@@ -6,9 +6,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use sparseio::{Builder, sources::file::{Reader, Writer}};
-use sparseio::{Reader as _, Writer as _};
+use sparseio::sources::file::{Reader, Writer};
 use sparseio::utils::{file, fixture, materialization, temp, tracing};
+use sparseio::{Builder, Reader as _, Writer as _};
 
 /// Joins a temporary directory with a file name used by the file-backed tests.
 fn temp_file(dir: &Path, name: &str) -> std::path::PathBuf {
@@ -17,7 +17,11 @@ fn temp_file(dir: &Path, name: &str) -> std::path::PathBuf {
 
 /// Builds a file-backed SparseIO instance for the given source and
 /// destination paths.
-async fn build_file_io(src_path: std::path::PathBuf, dst_path: std::path::PathBuf, chunk_size: usize) -> Arc<sparseio::SparseIO<Reader, Writer>> {
+async fn build_file_io(
+    src_path: std::path::PathBuf,
+    dst_path: std::path::PathBuf,
+    chunk_size: usize,
+) -> Arc<sparseio::SparseIO<Reader, Writer>> {
     Arc::new(
         Builder::new()
             .chunk_size(chunk_size)
@@ -162,10 +166,7 @@ async fn allocated_size_stays_below_logical_size_on_supported_platforms() -> Res
     let allocated = file::allocated_bytes(&dst_path)?.unwrap_or(0);
     assert_eq!(logical, fixture.len() as u64);
     if allocated > 0 {
-        assert!(
-            allocated <= logical,
-            "allocated bytes should not exceed logical bytes for a sparse file"
-        );
+        assert!(allocated <= logical, "allocated bytes should not exceed logical bytes for a sparse file");
     }
     Ok(())
 }

@@ -13,11 +13,9 @@ use std::sync::Arc;
 use bytes::Bytes;
 use tokio::sync::Mutex;
 
+use crate::utils::counting::{Reader as CountingReader, Writer as CountingWriter};
+use crate::utils::oracle::Reader as OracleReader;
 use crate::{Builder, Reader, SparseIO, Writer};
-use crate::utils::{
-    counting::{Reader as CountingReader, Writer as CountingWriter},
-    oracle::Reader as OracleReader,
-};
 
 /// Configuration for validating a reader implementation.
 #[derive(Debug, Clone)]
@@ -119,8 +117,8 @@ where
     ///
     /// This runs two phases:
     /// - direct reader checks against the deterministic fixture bytes
-    /// - SparseIO integration checks using an in-memory writer and internal
-    ///   counting wrappers to confirm cache and dedupe behavior
+    /// - SparseIO integration checks using an in-memory writer and internal counting wrappers to confirm cache and
+    ///   dedupe behavior
     pub async fn validate(self) -> std::result::Result<(), ValidationError> {
         let Self { reader, config } = self;
         tracing::info!(
@@ -160,8 +158,8 @@ where
     ///
     /// This performs:
     /// - direct extent-store checks against a fresh writer instance
-    /// - SparseIO integration checks that materialize bytes through the
-    ///   candidate writer and then re-read them through the cache path
+    /// - SparseIO integration checks that materialize bytes through the candidate writer and then re-read them through
+    ///   the cache path
     pub async fn validate(self) -> std::result::Result<(), ValidationError> {
         let Self { factory, config } = self;
         tracing::info!(

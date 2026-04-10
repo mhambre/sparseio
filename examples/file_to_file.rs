@@ -10,11 +10,9 @@ use clap::Parser;
 use common::sparse_materialization::{
     SparseMaterializationConfig, SparseMaterializationOptions, run_sparse_materialization,
 };
-use sparseio::{
-    Builder,
-    sources::file::{Reader, Writer},
-    utils::materialization,
-};
+use sparseio::Builder;
+use sparseio::sources::file::{Reader, Writer};
+use sparseio::utils::materialization;
 
 /// Simple sparse file-to-file implementation. This example demonstrates how to use
 /// the sparse I/O library to implement a simple file-to-file copy operation that

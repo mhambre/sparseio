@@ -1,6 +1,6 @@
-//! SparseIO - A Rust library for efficient sparse I/O operations. This library provides an interface to define how to efficiently
-//! read from and write to sparse objects, while tracking cache coverage and in-flight operations to optimize performance and resource usage
-//! in order to deduplicate work done across multiple I/O operations.
+//! SparseIO - A Rust library for efficient sparse I/O operations. This library provides an interface to define how to
+//! efficiently read from and write to sparse objects, while tracking cache coverage and in-flight operations to
+//! optimize performance and resource usage in order to deduplicate work done across multiple I/O operations.
 
 mod coverage;
 #[cfg(feature = "debug")]
@@ -20,10 +20,9 @@ use std::sync::Arc;
 use bytes::Bytes;
 use futures::FutureExt;
 pub use reader::Reader;
+use tokio::sync::Mutex;
 pub use viewer::Viewer;
 pub use writer::Writer;
-
-use tokio::sync::Mutex;
 
 use crate::coverage::Coverage;
 use crate::shared::{DEFAULT_CHUNK_SIZE, SharedChunk};
@@ -58,11 +57,7 @@ impl<R: Reader + Send + Sync + 'static, W: Writer + Send + Sync + 'static> Spars
         let chunk_data = self.fetch_chunk_from_source(offset).await?;
 
         // Write to store and update coverage
-        self.writer
-            .lock()
-            .await
-            .create_extent(offset, chunk_data.clone())
-            .await?;
+        self.writer.lock().await.create_extent(offset, chunk_data.clone()).await?;
         self.coverage.lock().await.insert(offset, chunk_data.len());
 
         Ok(chunk_data)
@@ -196,10 +191,7 @@ impl<R: Reader, W: Writer> Builder<R, W> {
 
         // Optional fields
         if self.chunk_size == 0 {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                "builder field chunk_size must be greater than zero",
-            ));
+            return Err(Error::new(ErrorKind::InvalidInput, "builder field chunk_size must be greater than zero"));
         }
 
         let len = reader.len().await?;

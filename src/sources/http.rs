@@ -185,7 +185,7 @@ pub type HttpReader = Reader;
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_total_from_content_range, Reader};
+    use super::{Reader, parse_total_from_content_range};
     use crate::Reader as _;
 
     /// This test keeps the override path isolated from any HTTP probing so

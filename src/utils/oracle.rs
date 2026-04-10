@@ -54,13 +54,7 @@ impl crate::Writer for Writer {
     }
 
     async fn read_extent(&self, offset: usize) -> std::io::Result<Bytes> {
-        Ok(self
-            .extents
-            .lock()
-            .await
-            .get(&offset)
-            .cloned()
-            .unwrap_or_else(Bytes::new))
+        Ok(self.extents.lock().await.get(&offset).cloned().unwrap_or_else(Bytes::new))
     }
 
     async fn delete_extent(&mut self, offset: usize) -> std::io::Result<()> {

@@ -8,13 +8,13 @@
 
 use std::collections::BTreeMap;
 use std::io::SeekFrom;
-use std::path::{Path, PathBuf};
-
-use bytes::Bytes;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::fd::{AsRawFd, RawFd};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::fs::MetadataExt;
+use std::path::{Path, PathBuf};
+
+use bytes::Bytes;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 /// Reads byte ranges from a local file using Tokio file I/O.
@@ -319,18 +319,19 @@ fn is_unsupported_punch_error(err: &std::io::Error) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{Reader as _, Writer as _};
-    use bytes::Bytes;
     use std::fs;
     use std::io::{Read, Seek, Write};
-    use std::path::Path;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
     #[cfg(target_os = "linux")]
     use std::os::unix::fs::MetadataExt;
+    use std::path::Path;
     #[cfg(target_os = "macos")]
     use std::process::Command;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use bytes::Bytes;
+
+    use super::*;
+    use crate::{Reader as _, Writer as _};
 
     /// Creates a unique test file path under `target/sparse-file-tests`.
     fn test_file_path(name: &str) -> std::io::Result<PathBuf> {

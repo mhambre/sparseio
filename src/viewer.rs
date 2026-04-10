@@ -4,7 +4,8 @@ use std::sync::Arc;
 use bytes::Bytes;
 use futures::stream::{self, BoxStream};
 
-use crate::{SparseIO, Writer, reader::Reader};
+use crate::reader::Reader;
+use crate::{SparseIO, Writer};
 
 /// Viewer type for the sparse I/O library. This struct provides an interface to read
 /// from a sparse object opened via [`crate::SparseIO`].
@@ -136,8 +137,9 @@ struct StreamState<R: Reader, W: Writer> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use futures::StreamExt;
+
+    use super::*;
     use crate::utils::{flaky, oracle};
 
     /// This test keeps the main buffered-read path honest at an unaligned
@@ -316,7 +318,11 @@ mod tests {
         viewer.seek(0).expect("seek should succeed");
 
         let mut stream = viewer.to_bytestream().await;
-        let first = stream.next().await.expect("stream should yield first chunk").expect("first chunk should succeed");
+        let first = stream
+            .next()
+            .await
+            .expect("stream should yield first chunk")
+            .expect("first chunk should succeed");
         assert_eq!(first, Bytes::from((0u8..16).collect::<Vec<_>>()));
 
         let second = stream.next().await.expect("stream should yield second item");

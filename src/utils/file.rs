@@ -25,8 +25,8 @@ pub fn allocated_bytes(path: &Path) -> std::io::Result<Option<u64>> {
         )));
     }
 
-    let stdout = String::from_utf8(output.stdout)
-        .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+    let stdout =
+        String::from_utf8(output.stdout).map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
     let kib = stdout
         .split_whitespace()
         .next()
