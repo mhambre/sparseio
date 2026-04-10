@@ -1,3 +1,5 @@
+#![cfg(feature = "utils")]
+
 use std::sync::Arc;
 
 use bytes::Bytes;
@@ -111,6 +113,26 @@ async fn cache_transitions_from_uncached_to_cached_without_extra_upstream_reads(
     assert_eq!(reader.read_count(), 1, "upstream reader should be used once");
     assert_eq!(writer.create_count(), 1, "the extent should be materialized once");
     assert_eq!(writer.read_count(), 1, "the cached re-read should come from the writer");
+}
+
+/// This test documents the intended `read_chunk` contract: callers may pass an
+/// unaligned offset and receive the full chunk that contains that logical byte.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn read_chunk_normalizes_to_the_containing_chunk() {
+    tracing::init();
+
+    let fixture = fixture::bytes(64);
+    let io = Arc::new(
+        build_io(
+            counting::Reader::new(oracle::Reader::new(fixture.clone())),
+            counting::Writer::new(oracle::Writer::default()),
+            16,
+        )
+        .await,
+    );
+
+    let chunk = io.read_chunk(17).await.expect("unaligned chunk read should succeed");
+    assert_eq!(chunk, fixture.slice(16..32));
 }
 
 /// This test protects the in-flight dedupe path so concurrent callers at

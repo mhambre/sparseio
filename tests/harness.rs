@@ -31,7 +31,7 @@ async fn writer_harness_validates_oracle_writer_end_to_end() {
 
     let fixture = fixture::bytes(96);
     let harness = WriterHarness::new(
-        || oracle::Writer::default(),
+        oracle::Writer::default,
         WriterHarnessConfig {
             chunk_size: 16,
             fixture,

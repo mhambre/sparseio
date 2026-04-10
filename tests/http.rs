@@ -163,3 +163,24 @@ async fn ignored_range_errors_at_non_zero_offsets_are_rejected() {
     let mut buf = [0u8; 4];
     assert!(reader.read_at(5, &mut buf).await.is_err(), "non-zero offsets require a range-aware response");
 }
+
+/// This test rejects range responses that claim success for the wrong byte
+/// window, which would otherwise corrupt the sparse cache with misaligned data.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mismatched_content_range_is_rejected() {
+    tracing::init();
+
+    let mut server = mockito::Server::new_async().await;
+    let _range = server
+        .mock("GET", "/asset")
+        .match_header("range", Matcher::Exact("bytes=4-7".to_string()))
+        .with_status(206)
+        .with_header("content-range", "bytes 0-3/8")
+        .with_body("abcd")
+        .create_async()
+        .await;
+    let reader = Reader::with_client(reqwest::Client::new(), server.url() + "/asset");
+
+    let mut buf = [0u8; 4];
+    assert!(reader.read_at(4, &mut buf).await.is_err(), "mismatched ranges must be rejected");
+}

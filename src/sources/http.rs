@@ -87,7 +87,7 @@ impl crate::Reader for Reader {
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "range end overflow"))?;
         let range_header = format!("bytes={offset}-{end}");
 
-        let response = self
+        let mut response = self
             .client
             .get(&self.url)
             .header(reqwest::header::RANGE, range_header)
@@ -95,23 +95,54 @@ impl crate::Reader for Reader {
             .await
             .map_err(io::Error::other)?;
 
-        // Server rejected our love :(
-        let status = response.status();
-        match status {
-            StatusCode::PARTIAL_CONTENT => {},
-            StatusCode::OK if offset == 0 => {},
-            StatusCode::RANGE_NOT_SATISFIABLE => return Ok(0),
-            _ => {
-                return Err(io::Error::other(format!(
-                    "unexpected HTTP status {status} for ranged read at offset {offset}"
-                )));
-            },
-        }
+        match response.status() {
+            StatusCode::PARTIAL_CONTENT => {
+                let (start, end, _) = response
+                    .headers()
+                    .get(reqwest::header::CONTENT_RANGE)
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(parse_content_range)
+                    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing or malformed Content-Range"))?;
 
-        let body = response.bytes().await.map_err(io::Error::other)?;
-        let to_copy = body.len().min(buffer.len());
-        buffer[..to_copy].copy_from_slice(&body[..to_copy]);
-        Ok(to_copy)
+                if start != offset {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("HTTP range response started at {start}, expected {offset}"),
+                    ));
+                }
+
+                let advertised_len = end
+                    .checked_sub(start)
+                    .and_then(|len| len.checked_add(1))
+                    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid Content-Range length"))?;
+                if advertised_len > buffer.len() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!(
+                            "HTTP range response advertised {advertised_len} bytes for a {} byte request",
+                            buffer.len()
+                        ),
+                    ));
+                }
+
+                let copied = read_response_prefix(&mut response, buffer).await?;
+                if copied != advertised_len {
+                    return Err(io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        format!(
+                            "HTTP range response body length {copied} did not match advertised length {advertised_len}"
+                        ),
+                    ));
+                }
+                Ok(copied)
+            },
+            StatusCode::OK if offset == 0 => read_response_prefix(&mut response, buffer).await,
+            StatusCode::RANGE_NOT_SATISFIABLE => Ok(0),
+            _ => Err(io::Error::other(format!(
+                "unexpected HTTP status {} for ranged read at offset {offset}",
+                response.status()
+            ))),
+        }
     }
 
     async fn len(&self) -> io::Result<usize> {
@@ -119,8 +150,8 @@ impl crate::Reader for Reader {
             return Ok(len);
         }
 
-        if let Ok(response) = self.client.head(&self.url).send().await {
-            if response.status().is_success() {
+        match self.client.head(&self.url).send().await {
+            Ok(response) if response.status().is_success() => {
                 if let Some(len) = response
                     .headers()
                     .get(reqwest::header::CONTENT_LENGTH)
@@ -129,7 +160,8 @@ impl crate::Reader for Reader {
                 {
                     return Ok(len);
                 }
-            }
+            },
+            _ => {},
         }
 
         // Fall back to a tiny ranged GET for servers that omit Content-Length on HEAD.
@@ -145,7 +177,8 @@ impl crate::Reader for Reader {
                     .headers()
                     .get(reqwest::header::CONTENT_RANGE)
                     .and_then(|value| value.to_str().ok())
-                    .and_then(parse_total_from_content_range)
+                    .and_then(parse_content_range)
+                    .and_then(|(_, _, total)| total)
                 {
                     return Ok(total);
                 }
@@ -171,13 +204,42 @@ impl crate::Reader for Reader {
     }
 }
 
-fn parse_total_from_content_range(value: &str) -> Option<usize> {
-    // Expected form: "bytes start-end/total".
-    let (_, total) = value.split_once('/')?;
-    if total == "*" {
+async fn read_response_prefix(response: &mut reqwest::Response, buffer: &mut [u8]) -> io::Result<usize> {
+    let mut copied = 0usize;
+
+    while copied < buffer.len() {
+        let Some(chunk) = response.chunk().await.map_err(io::Error::other)? else {
+            break;
+        };
+        if chunk.is_empty() {
+            continue;
+        }
+
+        let to_copy = (buffer.len() - copied).min(chunk.len());
+        buffer[copied..copied + to_copy].copy_from_slice(&chunk[..to_copy]);
+        copied += to_copy;
+    }
+
+    Ok(copied)
+}
+
+fn parse_content_range(value: &str) -> Option<(usize, usize, Option<usize>)> {
+    let value = value.strip_prefix("bytes ")?;
+    let (range, total) = value.split_once('/')?;
+    let (start, end) = range.split_once('-')?;
+    let start = start.parse::<usize>().ok()?;
+    let end = end.parse::<usize>().ok()?;
+    if end < start {
         return None;
     }
-    total.parse::<usize>().ok()
+
+    let total = if total == "*" {
+        None
+    } else {
+        Some(total.parse::<usize>().ok()?)
+    };
+
+    Some((start, end, total))
 }
 
 #[deprecated(note = "Use sources::http::Reader")]
@@ -185,7 +247,7 @@ pub type HttpReader = Reader;
 
 #[cfg(test)]
 mod tests {
-    use super::{Reader, parse_total_from_content_range};
+    use super::{Reader, parse_content_range};
     use crate::Reader as _;
 
     /// This test keeps the override path isolated from any HTTP probing so
@@ -199,16 +261,17 @@ mod tests {
     /// This test pins the plain Content-Range parser so the HTTP reader can
     /// safely interpret a server's range metadata.
     #[test]
-    fn parse_total_from_content_range_extracts_total_length() {
-        assert_eq!(parse_total_from_content_range("bytes 0-0/99"), Some(99));
-        assert_eq!(parse_total_from_content_range("bytes 10-19/2048"), Some(2048));
+    fn parse_content_range_extracts_start_end_and_total_length() {
+        assert_eq!(parse_content_range("bytes 0-0/99"), Some((0, 0, Some(99))));
+        assert_eq!(parse_content_range("bytes 10-19/2048"), Some((10, 19, Some(2048))));
     }
 
     /// This test keeps malformed or wildcard totals from being misread as
     /// valid lengths.
     #[test]
-    fn parse_total_from_content_range_rejects_malformed_or_unspecified_totals() {
-        assert_eq!(parse_total_from_content_range("bytes 0-0/*"), None);
-        assert_eq!(parse_total_from_content_range("not-a-range"), None);
+    fn parse_content_range_rejects_malformed_ranges_and_keeps_wildcard_totals_optional() {
+        assert_eq!(parse_content_range("bytes 0-0/*"), Some((0, 0, None)));
+        assert_eq!(parse_content_range("bytes 8-3/12"), None);
+        assert_eq!(parse_content_range("not-a-range"), None);
     }
 }

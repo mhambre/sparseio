@@ -48,7 +48,7 @@ impl<R: Reader, W: Writer> Viewer<R, W> {
     /// until EOF or dropped.
     ///
     /// The start offset does not need to be chunk-aligned. Bytes are emitted along
-    /// chunk boundaries but the user you must be cognisant of the fact that the first and
+    /// chunk boundaries, but callers must account for the fact that the first and
     /// last chunk may be partial.
     pub async fn to_bytestream(&mut self) -> BoxStream<'static, Result<Bytes>>
     where

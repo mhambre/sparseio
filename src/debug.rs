@@ -350,7 +350,7 @@ where
         }
     }
 
-    if fixture.len() > 0 {
+    if !fixture.is_empty() {
         let tail_offset = fixture.len() - 1;
         let mut tail_buf = vec![0xCC; chunk_size.max(1)];
         let tail_read = reader.read_at(tail_offset, &mut tail_buf).await.map_err(|err| {
@@ -427,14 +427,14 @@ where
     }
 
     let first_chunk = io.read_chunk(0).await.map_err(|err| {
-        ValidationError::io("reader sparse read_chunk", Some(0), chunk_size, bytes_summary(&fixture), err)
+        ValidationError::io("reader sparse read_chunk", Some(0), chunk_size, bytes_summary(fixture), err)
     })?;
     if first_chunk.as_ref() != &fixture[..first_chunk.len()] {
         return Err(ValidationError::new(
             "reader sparse read_chunk bytes",
             Some(0),
             chunk_size,
-            expected_range_summary(&fixture, 0, chunk_size),
+            expected_range_summary(fixture, 0, chunk_size),
             bytes_summary(&first_chunk),
         ));
     }
@@ -446,7 +446,7 @@ where
             "reader sparse unaligned read_chunk",
             Some(unaligned_offset),
             chunk_size,
-            bytes_summary(&fixture),
+            bytes_summary(fixture),
             err,
         )
     })?;
@@ -458,14 +458,14 @@ where
             "reader sparse unaligned bytes",
             Some(unaligned_offset),
             chunk_size,
-            expected_range_summary(&fixture, normalized, unaligned_chunk.len()),
+            expected_range_summary(fixture, normalized, unaligned_chunk.len()),
             bytes_summary(&unaligned_chunk),
         ));
     }
 
     let before_reads = reader.read_count();
     let cached = io.read_chunk(0).await.map_err(|err| {
-        ValidationError::io("reader sparse cached read", Some(0), chunk_size, bytes_summary(&fixture), err)
+        ValidationError::io("reader sparse cached read", Some(0), chunk_size, bytes_summary(fixture), err)
     })?;
     if cached != first_chunk {
         return Err(ValidationError::new(
@@ -504,7 +504,7 @@ where
                     "reader same-chunk concurrent read",
                     Some(0),
                     chunk_size,
-                    bytes_summary(&fixture),
+                    bytes_summary(fixture),
                     err,
                 )
             })?;
@@ -527,13 +527,13 @@ where
     let read = viewer
         .read(&mut buf)
         .await
-        .map_err(|err| ValidationError::io("reader viewer read", Some(0), chunk_size, bytes_summary(&fixture), err))?;
+        .map_err(|err| ValidationError::io("reader viewer read", Some(0), chunk_size, bytes_summary(fixture), err))?;
     if read != fixture.len() || buf != fixture {
         return Err(ValidationError::new(
             "reader viewer read",
             Some(0),
             chunk_size,
-            bytes_summary(&fixture),
+            bytes_summary(fixture),
             bytes_summary(&buf),
         ));
     }
@@ -543,7 +543,7 @@ where
     let mut streamed = Vec::new();
     while let Some(item) = futures::StreamExt::next(&mut stream).await {
         let chunk = item
-            .map_err(|err| ValidationError::io("reader bytestream", None, chunk_size, bytes_summary(&fixture), err))?;
+            .map_err(|err| ValidationError::io("reader bytestream", None, chunk_size, bytes_summary(fixture), err))?;
         streamed.extend_from_slice(&chunk);
     }
     if streamed != fixture {
@@ -551,7 +551,7 @@ where
             "reader bytestream parity",
             None,
             chunk_size,
-            bytes_summary(&fixture),
+            bytes_summary(fixture),
             bytes_summary(&streamed),
         ));
     }
@@ -626,7 +626,12 @@ where
     }
 
     let disjoint_offset = chunk_size.max(1) * 2;
-    let disjoint_data = Bytes::copy_from_slice(&fixture[..first_len.min(4).max(1)]);
+    let disjoint_seed: &[u8] = if fixture.is_empty() {
+        &[0]
+    } else {
+        &fixture[..fixture.len().min(4)]
+    };
+    let disjoint_data = Bytes::copy_from_slice(disjoint_seed);
     writer
         .create_extent(disjoint_offset, disjoint_data.clone())
         .await
@@ -768,7 +773,7 @@ where
     let read = viewer
         .read(&mut first)
         .await
-        .map_err(|err| ValidationError::io("writer sparse read", Some(0), chunk_size, bytes_summary(&fixture), err))?;
+        .map_err(|err| ValidationError::io("writer sparse read", Some(0), chunk_size, bytes_summary(fixture), err))?;
     if read == 0 {
         return Err(ValidationError::new(
             "writer sparse forward progress",
@@ -780,14 +785,14 @@ where
     }
 
     let first_chunk = io.read_chunk(0).await.map_err(|err| {
-        ValidationError::io("writer sparse read_chunk", Some(0), chunk_size, bytes_summary(&fixture), err)
+        ValidationError::io("writer sparse read_chunk", Some(0), chunk_size, bytes_summary(fixture), err)
     })?;
     if first_chunk != Bytes::copy_from_slice(&fixture[..first_chunk.len()]) {
         return Err(ValidationError::new(
             "writer sparse chunk bytes",
             Some(0),
             chunk_size,
-            expected_range_summary(&fixture, 0, first_chunk.len()),
+            expected_range_summary(fixture, 0, first_chunk.len()),
             bytes_summary(&first_chunk),
         ));
     }
@@ -795,7 +800,7 @@ where
     let before_create = writer.create_count();
     let before_read = writer.read_count();
     let cached = io.read_chunk(0).await.map_err(|err| {
-        ValidationError::io("writer sparse cached read", Some(0), chunk_size, bytes_summary(&fixture), err)
+        ValidationError::io("writer sparse cached read", Some(0), chunk_size, bytes_summary(fixture), err)
     })?;
     if cached != first_chunk {
         return Err(ValidationError::new(
@@ -817,7 +822,7 @@ where
     }
 
     let cached_extent = writer.read_extent(0).await.map_err(|err| {
-        ValidationError::io("writer sparse extent read", Some(0), chunk_size, bytes_summary(&fixture), err)
+        ValidationError::io("writer sparse extent read", Some(0), chunk_size, bytes_summary(fixture), err)
     })?;
     if cached_extent != first_chunk {
         return Err(ValidationError::new(
@@ -848,7 +853,7 @@ where
                 "writer sparse concurrent read",
                 Some(offset),
                 config.chunk_size,
-                bytes_summary(&fixture),
+                bytes_summary(fixture),
                 err,
             )
         })?;

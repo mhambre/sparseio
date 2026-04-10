@@ -24,4 +24,12 @@ pub trait Reader: Send {
     /// The value must be stable for the lifetime of the reader unless the
     /// underlying source itself mutates.
     fn len(&self) -> impl std::future::Future<Output = std::io::Result<usize>> + Send;
+
+    /// Returns whether the logical object is empty.
+    fn is_empty(&self) -> impl std::future::Future<Output = std::io::Result<bool>> + Send
+    where
+        Self: Sync,
+    {
+        async { Ok(self.len().await? == 0) }
+    }
 }

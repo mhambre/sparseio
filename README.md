@@ -3,11 +3,20 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/mhambre/sparseio/actions/workflows/unit.yml">
+    <img alt="Unit workflow" src="https://github.com/mhambre/sparseio/actions/workflows/unit.yml/badge.svg"/>
+  </a>
+  <a href="https://github.com/mhambre/sparseio/actions/workflows/integration.yml">
+    <img alt="Integration workflow" src="https://github.com/mhambre/sparseio/actions/workflows/integration.yml/badge.svg"/>
+  </a>
+  <a href="https://github.com/mhambre/sparseio/actions/workflows/code-quality.yml">
+    <img alt="Code Quality workflow" src="https://github.com/mhambre/sparseio/actions/workflows/code-quality.yml/badge.svg"/>
+  </a>
   <a href="https://crates.io/crates/sparseio">
-    <img href="https://github.com/matthambrecht/eaql/actions/unit.yml" src="https://github.com/matthambrecht/eaql/actions/unit.yml/badge.svg"/>
-    <img href="https://github.com/matthambrecht/eaql/actions/integration.yml" src="https://github.com/matthambrecht/eaql/actions/integration.yml/badge.svg"/>
     <img src="https://img.shields.io/crates/v/sparseio.svg" alt="Crates.io">
-    <img alt="docs.rs" src="https://img.shields.io/docsrs/sparse?link=https%3A%2F%2Fdocs.rs%2Fsparseio">
+  </a>
+  <a href="https://docs.rs/sparseio">
+    <img alt="docs.rs" src="https://img.shields.io/docsrs/sparseio">
   </a>
 </p>
 
@@ -39,7 +48,7 @@ SparseIO models this as:
 ## Current Feature Flags
 
 - `file`: file-backed `Reader`/`Writer` implementations.
-- `http`: reqwesr-backed HTTP range-based `Reader` implementation.
+- `http`: reqwest-backed HTTP range-based `Reader` implementation.
 
 ## Quickstart
 

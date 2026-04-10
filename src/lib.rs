@@ -92,18 +92,22 @@ impl<R: Reader + Send + Sync + 'static, W: Writer + Send + Sync + 'static> Spars
             return Err(Error::new(ErrorKind::UnexpectedEof, "range not satisfied"));
         }
 
-        if let Some((_, end)) = self.coverage.lock().await.get(offset_norm) {
-            if offset_norm < end {
-                // Chunk is filled in, read from store
-                return self.writer.lock().await.read_extent(offset_norm).await;
-            }
+        if self
+            .coverage
+            .lock()
+            .await
+            .get(offset_norm)
+            .is_some_and(|(_, end)| offset_norm < end)
+        {
+            // Chunk is filled in, read from store
+            return self.writer.lock().await.read_extent(offset_norm).await;
         }
 
         // Chunk is not filled in, fetch it once and share in-flight work across concurrent callers.
         let flight = self.get_or_create_flight(offset_norm).await;
         let chunk_data = flight.await.map_err(Error::other);
         self.flights.lock().await.remove(&offset_norm);
-        Ok(chunk_data?)
+        chunk_data
     }
 }
 
@@ -116,6 +120,11 @@ impl<R: Reader, W: Writer> SparseIO<R, W> {
     /// Gets the total length of the underlying sparse object.
     pub fn len(&self) -> usize {
         self.len
+    }
+
+    /// Returns whether the sparse object has zero logical bytes.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
     }
 
     /// Helper function to normalize the offset provided to align with the chunk size.
@@ -154,7 +163,7 @@ impl<R, W> Builder<R, W> {
     }
 
     /// Sets the chunk size for the sparse object. This is an optional field, and
-    /// defaults to 128KB.
+    /// defaults to 128 KiB.
     pub fn chunk_size(mut self, chunk_size: usize) -> Self {
         self.chunk_size = chunk_size;
         self

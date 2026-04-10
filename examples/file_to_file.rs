@@ -92,7 +92,6 @@ async fn main() -> std::io::Result<()> {
         },
         |offset| {
             let sparse_io = sparse_io.clone();
-            let chunk_size = chunk_size;
             async move {
                 let mut viewer = sparse_io.viewer();
                 let normalized_offset = offset - (offset % chunk_size);
