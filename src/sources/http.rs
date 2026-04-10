@@ -122,9 +122,7 @@ impl crate::Reader for Reader {
                     } else {
                         return Err(io::Error::new(
                             io::ErrorKind::InvalidData,
-                            format!(
-                                "HTTP range response ended at {response_end}, expected {requested_end}"
-                            ),
+                            format!("HTTP range response ended at {response_end}, expected {requested_end}"),
                         ));
                     }
                 } else {

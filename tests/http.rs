@@ -203,8 +203,5 @@ async fn truncated_partial_content_before_eof_is_rejected() {
     let reader = Reader::with_client(reqwest::Client::new(), server.url() + "/asset");
 
     let mut buf = [0u8; 4];
-    assert!(
-        reader.read_at(4, &mut buf).await.is_err(),
-        "short mid-object 206 responses must be rejected"
-    );
+    assert!(reader.read_at(4, &mut buf).await.is_err(), "short mid-object 206 responses must be rejected");
 }
