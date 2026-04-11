@@ -1,4 +1,4 @@
-name: Code Quality
+name: Quality
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ env:
 
 jobs:
   code-quality:
-    name: Code Quality / ubuntu-latest
+    name: Quality / ubuntu-latest
     runs-on: ubuntu-latest
 
     steps:

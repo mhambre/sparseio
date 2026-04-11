@@ -9,8 +9,11 @@
   <a href="https://github.com/mhambre/sparseio/actions/workflows/integration.yml">
     <img alt="Integration workflow" src="https://github.com/mhambre/sparseio/actions/workflows/integration.yml/badge.svg"/>
   </a>
-  <a href="https://github.com/mhambre/sparseio/actions/workflows/code-quality.yml">
-    <img alt="Code Quality workflow" src="https://github.com/mhambre/sparseio/actions/workflows/code-quality.yml/badge.svg"/>
+  <a href="https://github.com/mhambre/sparseio/actions/workflows/quality.yml">
+    <img alt="Quality workflow" src="https://github.com/mhambre/sparseio/actions/workflows/quality.yml/badge.svg"/>
+  </a>
+  <a href="https://github.com/mhambre/sparseio/actions/workflows/github-code-scanning/codeql">
+    <img src="https://github.com/mhambre/sparseio/actions/workflows/github-code-scanning/codeql/badge.svg" alt="CodeQL">
   </a>
   <a href="https://crates.io/crates/sparseio">
     <img src="https://img.shields.io/crates/v/sparseio.svg" alt="Crates.io">
