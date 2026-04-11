@@ -1,0 +1,31 @@
+root = true
+
+[*]
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{rs,sh,md}]
+charset = utf-8
+
+[*.{rs}]
+indent_style = space
+indent_size = 4
+
+[*.{sh}]
+indent_style = space
+indent_size = 2
+
+[*.{md}]
+indent_style = space
+indent_size = 2
+
+[Makefile]
+indent_style = tab
+
+[Justfile]
+indent_style = space
+indent_size = 2
+
+[*.{json,toml}]
+indent_style = space
+indent_size = 2

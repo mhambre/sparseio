@@ -1,0 +1,40 @@
+name: Unit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  unit:
+    name: Unit / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Unit tests
+        run: cargo nextest run --features utils
+
+      - name: Debug harness tests
+        run: cargo nextest run --features utils,debug
+
+      - name: Doc tests
+        run: cargo test --doc --all-features
