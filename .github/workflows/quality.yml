@@ -1,19 +1,19 @@
 name: Quality
 
 on:
-  workflow_dispatch:
-  push:
-    branches: ["master"]
-  pull_request:
-    branches: ["master"]
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   code-quality:
-    name: Quality / ubuntu-latest
-    runs-on: ubuntu-latest
+    name: Quality / ${{ inputs.runner }}
+    runs-on: ${{ inputs.runner }}
 
     steps:
       - uses: actions/checkout@v5

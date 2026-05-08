@@ -1,0 +1,25 @@
+name: CI / macOS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
+
+jobs:
+  unit:
+    uses: ./.github/workflows/unit.yml
+    with:
+      runner: macos-latest
+
+  integration:
+    uses: ./.github/workflows/integration.yml
+    with:
+      runner: macos-latest
+
+  quality:
+    needs: [unit, integration]
+    uses: ./.github/workflows/quality.yml
+    with:
+      runner: macos-latest
