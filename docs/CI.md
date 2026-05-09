@@ -11,21 +11,16 @@ Both pipelines share the same reusable component workflows for quality checks, u
 
 ```mermaid
 flowchart TD
-    subgraph Ubuntu["CI / Ubuntu"]
-        UQ["Quality\nubuntu-latest"]
-        UU["Unit\nubuntu-latest"]
-        UI["Integration\nubuntu-latest"]
-        UQ --> UU
-        UQ --> UI
-    end
+    U["CI / Ubuntu"]
+    M["CI / macOS"]
+    Q["Quality"]
+    T["Unit"]
+    I["Integration"]
 
-    subgraph MacOS["CI / macOS"]
-        MQ["Quality\nmacos-latest"]
-        MU["Unit\nmacos-latest"]
-        MI["Integration\nmacos-latest"]
-        MQ --> MU
-        MQ --> MI
-    end
+    U --> Q
+    M --> Q
+    Q --> T
+    Q --> I
 ```
 
 ## Workflow Layout
@@ -38,7 +33,7 @@ flowchart TD
 
 ## Job Order
 
-`quality` runs first in each OS pipeline. `unit` and `integration` both depend on `quality`, so formatting, linting, and compile validation must pass before the test fan-out begins.
+`CI / Ubuntu` and `CI / macOS` both route into the same logical pipeline shape. `quality` runs first, then `unit` and `integration` both depend on `quality`, so formatting, linting, and compile validation must pass before the test fan-out begins.
 
 ## Quality Workflow
 
