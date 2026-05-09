@@ -1,4 +1,4 @@
-name: Unit
+name: Unit Tests
 
 on:
   workflow_call:
@@ -12,7 +12,7 @@ env:
 
 jobs:
   unit:
-    name: Unit / ${{ inputs.runner }}
+    name: ${{ inputs.runner }}
     runs-on: ${{ inputs.runner }}
 
     steps:
@@ -25,6 +25,8 @@ jobs:
           tool: nextest
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cargo-${{ inputs.runner }}
 
       - name: Unit tests
         run: cargo nextest run --features utils
