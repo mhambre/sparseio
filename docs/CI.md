@@ -1,12 +1,5 @@
 # CI Pipelines
 
-SparseIO uses two top-level GitHub Actions pipelines:
-
-- `CI / Ubuntu`
-- `CI / macOS`
-
-Both pipelines share the same reusable component workflows for quality checks, unit tests, and integration tests. The only difference between them is the runner OS.
-
 ## Pipeline Graph
 
 ```mermaid

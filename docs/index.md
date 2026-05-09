@@ -2,4 +2,4 @@
 
 ## Table of Contents
 
-- [CI Pipelines](./CI.md): Documentation on Github Actions pipelines
+- [CI Pipelines](./CI.md): Documentation on GitHub Actions pipelines

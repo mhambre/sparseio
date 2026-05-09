@@ -8,8 +8,41 @@ on:
     branches: ["master"]
 
 jobs:
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    outputs:
+      quality: ${{ steps.filter.outputs.quality }}
+    steps:
+      - uses: actions/checkout@v5
+        if: github.event_name != 'pull_request'
+        with:
+          fetch-depth: 0
+
+      - id: filter
+        if: github.event_name != 'workflow_dispatch'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            quality:
+              - '.github/workflows/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'src/**'
+              - 'tests/**'
+              - 'examples/**'
+
+      - id: manual
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "quality=true" >> "$GITHUB_OUTPUT"
+
   quality:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      needs.changes.outputs.quality == 'true'
     name: Quality
+    needs: [changes]
     uses: ./.github/workflows/quality.yml
     with:
       runner: ubuntu-latest
