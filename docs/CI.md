@@ -14,8 +14,8 @@ flowchart TD
     U["CI / Ubuntu"]
     M["CI / macOS"]
     Q["Quality"]
-    T(("Unit"))
-    I(("Integration"))
+    T["Unit"]
+    I["Integration"]
 
     U --> Q
     M --> Q
