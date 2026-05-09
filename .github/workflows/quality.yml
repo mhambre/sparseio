@@ -1,19 +1,19 @@
-name: Quality
+name: Quality and Compilation Checks
 
 on:
-  workflow_dispatch:
-  push:
-    branches: ["master"]
-  pull_request:
-    branches: ["master"]
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   code-quality:
-    name: Quality / ubuntu-latest
-    runs-on: ubuntu-latest
+    name: ${{ inputs.runner }}
+    runs-on: ${{ inputs.runner }}
 
     steps:
       - uses: actions/checkout@v5
@@ -23,6 +23,8 @@ jobs:
           components: clippy
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cargo-${{ inputs.runner }}
 
       - name: Install nightly rustfmt
         run: rustup toolchain install nightly --profile minimal --component rustfmt

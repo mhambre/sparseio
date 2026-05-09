@@ -3,14 +3,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mhambre/sparseio/actions/workflows/unit.yml">
-    <img alt="Unit workflow" src="https://github.com/mhambre/sparseio/actions/workflows/unit.yml/badge.svg"/>
+  <a href="https://github.com/mhambre/sparseio/actions/workflows/ci-ubuntu.yml">
+    <img alt="Ubuntu CI workflow" src="https://github.com/mhambre/sparseio/actions/workflows/ci-ubuntu.yml/badge.svg"/>
   </a>
-  <a href="https://github.com/mhambre/sparseio/actions/workflows/integration.yml">
-    <img alt="Integration workflow" src="https://github.com/mhambre/sparseio/actions/workflows/integration.yml/badge.svg"/>
-  </a>
-  <a href="https://github.com/mhambre/sparseio/actions/workflows/quality.yml">
-    <img alt="Quality workflow" src="https://github.com/mhambre/sparseio/actions/workflows/quality.yml/badge.svg"/>
+  <a href="https://github.com/mhambre/sparseio/actions/workflows/ci-macos.yml">
+    <img alt="macOS CI workflow" src="https://github.com/mhambre/sparseio/actions/workflows/ci-macos.yml/badge.svg"/>
   </a>
   <a href="https://github.com/mhambre/sparseio/actions/workflows/github-code-scanning/codeql">
     <img src="https://github.com/mhambre/sparseio/actions/workflows/github-code-scanning/codeql/badge.svg" alt="CodeQL">
