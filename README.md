@@ -105,3 +105,9 @@ async fn demo() -> std::io::Result<()> {
   Ok(())
 }
 ```
+
+## Documentation
+
+- [Usage Documentation](https://crates.io/crates/sparseio): Guides on how to use in your application.
+- [Library Documentation](https://docs.rs/sparseio): Traits, methods, etc.
+- [Development, Design, Architecture](./docs/index.md): Design decisions, diagrams, etc.
