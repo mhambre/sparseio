@@ -25,7 +25,7 @@ SparseIO is a Rust library for sparse, out-of-order materialization of large byt
 Instead of eagerly copying an entire object from source to destination, SparseIO allows you to fetch only the chunks you ask for. It tracks what is already present for efficient caching, and deduplicates concurrent reads for the same chunk.
 
 <p align="center">
-<img width="600px" src="./docs/static/readme-general-read.gif">
+<img width="600px" src="./docs/static/general-read.gif">
 </p>
 
 ## Core Premise

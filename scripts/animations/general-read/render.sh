@@ -2,13 +2,14 @@
 
 set -euo pipefail
 
+ANIMATION_NAME="general-read"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../common.sh"
 
-SCENE_FILE="$ROOT_DIR/scripts/animations/general-read/scene.py"
-MEDIA_DIR="$ROOT_DIR/scripts/animations/general-read/.media"
+SCENE_FILE="$ROOT_DIR/scripts/animations/$ANIMATION_NAME/scene.py"
+MEDIA_DIR="$ROOT_DIR/scripts/animations/$ANIMATION_NAME/.media"
 OUTPUT_DIR="$ROOT_DIR/docs/static"
-OUTPUT_GIF="$OUTPUT_DIR/readme-general-read.gif"
+OUTPUT_GIF="$OUTPUT_DIR/$ANIMATION_NAME.gif"
 
 mkdir -p "$MEDIA_DIR" "$OUTPUT_DIR"
 

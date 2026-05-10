@@ -19,17 +19,12 @@ python3 -m pip install manim==0.19.0
 
 ## Rendering
 
-Render the general read animation:
+Render animation:
 
 ```bash
-./scripts/animations/general-read/render.sh
+./scripts/animations/{animation}/render.sh
 ```
 
-On first run, the shared animation bootstrap will create `scripts/animations/.venv`
-and install `scripts/animations/requirements.txt` automatically.
-
-That script renders a low-resolution scene for documentation and writes:
-
 ```text
-docs/static/readme-general-read.gif
+docs/static/{animation}.gif
 ```
