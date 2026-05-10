@@ -24,6 +24,10 @@ SparseIO is a Rust library for sparse, out-of-order materialization of large byt
 
 Instead of eagerly copying an entire object from source to destination, SparseIO allows you to fetch only the chunks you ask for. It tracks what is already present for efficient caching, and deduplicates concurrent reads for the same chunk.
 
+<p align="center">
+<img width="600px" src="./docs/static/readme-general-read.gif">
+</p>
+
 ## Core Premise
 
 Certain large data objects, such as multimedia files, system logs, columnar storage files used in AI and ML workloads, and archival records, are often accessed non-sequentially. In these scenarios, applications typically retrieve only specific byte ranges rather than reading the entire object. Loading all bytes upfront results in unnecessary I/O, increased latency, and inefficient bandwidth utilization. Selective or partial reads improve performance by reducing data transfer, accelerating processing, and optimizing resource consumption.
