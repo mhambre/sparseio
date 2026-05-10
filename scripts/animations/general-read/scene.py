@@ -9,7 +9,6 @@ from manim import (
     UP,
     Arrow,
     Create,
-    DashedVMobject,
     FadeIn,
     FadeOut,
     FadeTransform,
@@ -32,9 +31,6 @@ manim_config.background_color = "#07111F"
 FONT_FAMILY = "Verdana"
 
 FILE_CHUNKS = 6
-CHUNK_SIZE_LABEL = "1 chunk"
-FILE_SIZE_LABEL = "6 chunks"
-PREFETCH_AHEAD_CHUNKS = 2
 
 FRAME_STROKE = "#7F8EA3"
 MUTED_TEXT = "#AAB8C8"
@@ -45,10 +41,8 @@ UPSTREAM_COLOR = "#4CC9F0"
 CACHE_COLOR = "#90BE6D"
 SUBREAD_COLOR = "#FFD166"
 SUBREAD_SLOT_COLOR = "#B9852A"
-STREAM_COLOR = "#B5179E"
 MISS_COLOR = "#F94144"
 HIT_COLOR = "#6E9B4B"
-PREFETCH_COLOR = "#577590"
 
 Text.set_default(font=FONT_FAMILY)
 
@@ -438,23 +432,3 @@ class GeneralReadScene(Scene):
         center_y = top[1] + (bottom[1] - top[1]) * center_ratio
         slice_rect.move_to([chunk_rect.get_center()[0], center_y, 0])
         return slice_rect
-
-    def make_prefetch_window(self, cache: FileColumn, start_chunk: int, chunk_span: int) -> DashedVMobject:
-        start = max(0, min(FILE_CHUNKS - 1, start_chunk))
-        end = max(start, min(FILE_CHUNKS - 1, start + chunk_span - 1))
-        top = cache.chunk_rect(start).get_top()
-        bottom = cache.chunk_rect(end).get_bottom()
-        window = Rectangle(
-            width=cache.body.width + 0.18,
-            height=top[1] - bottom[1],
-            stroke_color=PREFETCH_COLOR,
-            stroke_width=2,
-        )
-        window.move_to([cache.body.get_center()[0], (top[1] + bottom[1]) / 2, 0])
-        return DashedVMobject(window, num_dashes=18)
-
-    def make_stream_slices(self, cache: FileColumn, start_chunk: int) -> VGroup:
-        first = self.make_slice(cache.chunk_rect(start_chunk), 0.58, 0.26, STREAM_COLOR)
-        second = self.make_slice(cache.chunk_rect(start_chunk + 1), 0.42, 0.72, STREAM_COLOR)
-        third = self.make_slice(cache.chunk_rect(start_chunk + 2), 0.24, 0.24, STREAM_COLOR)
-        return VGroup(first, second, third)
