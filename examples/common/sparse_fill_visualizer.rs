@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
-/// Visualizes how extents of a sparse object are being filled by rendering a horizontal bar. Each character
-/// in the bar represents a portion of the object, with different symbols indicating the fill status.
-pub fn render_sparse_fill_bar(filled_offsets: &HashSet<usize>, chunk_offsets: &[usize], width: usize) -> String {
+/// Visualizes how a file cache fills chunk coverage by rendering a horizontal bar. Each character in the bar
+/// represents a portion of the object, with different symbols indicating the cached fraction.
+pub fn render_file_fill_bar(filled_offsets: &HashSet<usize>, chunk_offsets: &[usize], width: usize) -> String {
     if chunk_offsets.is_empty() {
         return String::new();
     }

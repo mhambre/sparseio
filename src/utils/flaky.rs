@@ -5,9 +5,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use bytes::Bytes;
 
 /// Reader double that fails once for selected offsets.
-///
-/// This is useful when a test needs to prove SparseIO clears in-flight state
-/// after a transient upstream error and allows a later retry to succeed.
 #[derive(Clone)]
 pub struct Reader {
     data: Arc<Vec<u8>>,
@@ -47,44 +44,40 @@ impl crate::Reader for Reader {
     }
 }
 
-/// Writer double that fails once for selected offsets.
-///
-/// This is useful when a test needs to prove SparseIO clears in-flight state
-/// after a transient materialization failure and retries cleanly.
+/// Writer double that fails once for selected cache keys.
 #[derive(Default, Clone)]
 pub struct Writer {
-    extents: Arc<tokio::sync::Mutex<std::collections::BTreeMap<usize, Bytes>>>,
-    fail_offsets: Arc<HashSet<usize>>,
+    entries: Arc<tokio::sync::Mutex<std::collections::BTreeMap<String, Bytes>>>,
+    fail_keys: Arc<HashSet<String>>,
     failures: Arc<AtomicUsize>,
 }
 
 impl Writer {
-    /// Creates a flaky writer that fails once on any listed offset.
-    pub fn fail_once_at(fail_offsets: impl IntoIterator<Item = usize>) -> Self {
+    pub fn fail_once_at(fail_keys: impl IntoIterator<Item = impl Into<String>>) -> Self {
         Self {
-            extents: Arc::new(tokio::sync::Mutex::new(std::collections::BTreeMap::new())),
-            fail_offsets: Arc::new(fail_offsets.into_iter().collect()),
+            entries: Arc::new(tokio::sync::Mutex::new(std::collections::BTreeMap::new())),
+            fail_keys: Arc::new(fail_keys.into_iter().map(Into::into).collect()),
             failures: Arc::new(AtomicUsize::new(0)),
         }
     }
 }
 
 impl crate::Writer for Writer {
-    async fn create_extent(&mut self, offset: usize, data: Bytes) -> std::io::Result<()> {
-        if self.fail_offsets.contains(&offset) && self.failures.fetch_add(1, Ordering::SeqCst) == 0 {
-            return Err(std::io::Error::other(format!("transient writer failure at {offset}")));
+    async fn set_cache(&mut self, key: &str, value: &[u8]) -> std::io::Result<()> {
+        if self.fail_keys.contains(key) && self.failures.fetch_add(1, Ordering::SeqCst) == 0 {
+            return Err(std::io::Error::other("transient writer failure"));
         }
 
-        self.extents.lock().await.insert(offset, data);
+        self.entries.lock().await.insert(key.to_owned(), Bytes::copy_from_slice(value));
         Ok(())
     }
 
-    async fn read_extent(&self, offset: usize) -> std::io::Result<Bytes> {
-        Ok(self.extents.lock().await.get(&offset).cloned().unwrap_or_else(Bytes::new))
+    async fn get_cache(&self, key: &str) -> std::io::Result<Option<Bytes>> {
+        Ok(self.entries.lock().await.get(key).cloned())
     }
 
-    async fn delete_extent(&mut self, offset: usize) -> std::io::Result<()> {
-        self.extents.lock().await.remove(&offset);
+    async fn delete_cache(&mut self, key: &str) -> std::io::Result<()> {
+        self.entries.lock().await.remove(key);
         Ok(())
     }
 }
