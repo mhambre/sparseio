@@ -1,6 +1,8 @@
 #![cfg(feature = "debug")]
 
-use sparseio::debug::{ReaderHarness, ReaderHarnessConfig, WriterHarness, WriterHarnessConfig};
+use sparseio::debug::{
+    MetadataHarness, MetadataHarnessConfig, ReaderHarness, ReaderHarnessConfig, WriterHarness, WriterHarnessConfig,
+};
 use sparseio::utils::{fixture, oracle, tracing};
 
 /// This test proves the public reader harness can validate a correct
@@ -39,4 +41,22 @@ async fn writer_harness_validates_oracle_writer_end_to_end() {
     );
 
     harness.validate().await.expect("oracle writer should satisfy the harness");
+}
+
+/// This test proves the public metadata harness can validate a correct
+/// metadata store against direct load/replace/clear and refcount semantics.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn metadata_harness_validates_oracle_metadata_end_to_end() {
+    tracing::init();
+
+    let fixture = fixture::bytes(96);
+    let harness = MetadataHarness::new(
+        oracle::Metadata::new(),
+        MetadataHarnessConfig {
+            chunk_size: 16,
+            fixture,
+        },
+    );
+
+    harness.validate().await.expect("oracle metadata should satisfy the harness");
 }

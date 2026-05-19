@@ -49,28 +49,27 @@ SparseIO models this as:
 - Pluggable backends via `Reader` and `Writer` traits.
 - Optional source implementations in `sources` (feature-gated).
 
-## Current Feature Flags
+## Current Sample Backends
 
-- `file`: file-backed `Reader`/`Writer` implementations.
-- `http`: reqwest-backed HTTP range-based `Reader` implementation.
+- `impl-file`: file-backed `Reader`/`Writer` implementations.
+- `impl-opendal`: OpenDAL-backed Reader integration.
+
+- `metadata-memory`: in-memory metadata storage for single-process use.
+
 
 ## Quickstart
 
-Run the file-to-file sparse example:
+Run the local-file to file-cache example:
 
 ```bash
-cargo run --example file_to_file --features file -- \
+cargo run --example file_to_file --features impl-file,metadata-memory -- \
   --src target/manual/file-to-file-src.bin \
-  --dst target/manual/file-to-file-dst.bin \
+  --dst target/manual/file-to-file-cache \
   --source-len 8388608 \
-  --chunk-size 262144 \
-  --fill-percent 35
+  --chunk-size 262144
 ```
 
-The example intentionally materializes randomized chunk offsets first, then verifies:
-
-- full fill => destination matches source byte-for-byte,
-- partial fill => written chunks match source and unwritten regions remain zeroed.
+The example generates a local source file, reads a few chunk-aligned offsets into a file-cache directory, and then reopens the cache to show that metadata restores the original chunk size without having to cache the entire object.
 
 See: `examples/file_to_file.rs` and `examples/file_to_file.md`.
 
@@ -78,21 +77,24 @@ See: `examples/file_to_file.rs` and `examples/file_to_file.md`.
 
 ```rust
 use std::sync::Arc;
-use sparseio::Builder;
+use opendal::Operator;
 
 async fn demo() -> std::io::Result<()> {
-  // HTTP File -> Sparse Local File
-  let reader = sparseio::sources::http::Reader::new("https://stuff.mit.edu/afs/sipb/contrib/pi/pi-billion.txt");
-  let writer = sparseio::sources::file::Writer::new("pi.txt");
+  // HTTP File -> File Cache Directory
+  let operator = Operator::from_uri(operator, "https://stuff.mit.edu");
+  let reader = sparseio::sources::opendal::Reader::new(
+    "afs/sipb/contrib/pi/pi-billion.txt",
+  );
+  let writer = sparseio::sources::file::Writer::new("pi-cache");
+  let metadata = sparseio::metadata::memory::MemoryMetadata::new("pi-cache.metadata.bin", 1)?;
 
-  let io = Arc::new(
-    Builder::new()
+  let io = sparseio::Builder::new()
       .chunk_size(1 * 1024)
+      .metadata(metadata)
       .reader(reader)
       .writer(writer)
       .build()
-      .await?
-  );
+      .await?;
 
   // Get a viewer into the Sparse store
   let mut viewer = io.viewer();

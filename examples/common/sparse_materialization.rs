@@ -10,10 +10,10 @@ use std::time::Duration;
 
 use clap::Args;
 use rand::Rng;
-use rand::seq::SliceRandom;
 use tokio::time::sleep;
 
-use crate::common::sparse_fill_visualizer::render_sparse_fill_bar;
+use crate::common::sparse_fill_visualizer::render_file_fill_bar;
+use crate::common::utils::shuffle_offsets;
 
 #[derive(Args, Debug, Clone)]
 /// CLI options shared by sparse materialization examples.
@@ -138,7 +138,7 @@ where
     );
     println!("randomized read points (selected): {:?}", offsets);
     println!(
-        "sparse map width={} sleep={}ms between steps",
+        "file cache map width={} sleep={}ms between steps",
         config.options.progress_width, config.options.sleep_ms
     );
 
@@ -153,15 +153,15 @@ where
 
         let progress_step = index + 1;
         let progress_percent = (progress_step as f64 * 100.0) / offsets.len() as f64;
-        let sparse_fill_bar = render_sparse_fill_bar(&filled_offsets, &logical_offsets, config.options.progress_width);
+        let file_fill_bar = render_file_fill_bar(&filled_offsets, &logical_offsets, config.options.progress_width);
 
         println!(
             "filled chunk {} from requested offset {} -> normalized {} ({} bytes)",
             index, offset, normalized_offset, chunk_len
         );
         println!(
-            "sparse fill map [{}] {:>6.2}% ({}/{})",
-            sparse_fill_bar,
+            "file cache fill map [{}] {:>6.2}% ({}/{})",
+            file_fill_bar,
             progress_percent,
             filled_offsets.len(),
             logical_offsets.len()
@@ -210,12 +210,4 @@ fn jittered_offsets<R: Rng + ?Sized>(offsets: &[usize], chunk_size: usize, len: 
             offset + jitter
         })
         .collect()
-}
-
-/// Randomizes chunk ordering in-place.
-fn shuffle_offsets<R: Rng + ?Sized>(offsets: &mut [usize], rng: &mut R) {
-    if offsets.len() <= 1 {
-        return;
-    }
-    offsets.shuffle(rng);
 }

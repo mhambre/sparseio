@@ -8,6 +8,9 @@
 
 use std::collections::BTreeMap;
 
+use crate::metadata::ChunkRecord;
+
+#[derive(Clone)]
 pub(crate) struct Coverage {
     store: BTreeMap<usize, usize>,
 }
@@ -15,6 +18,19 @@ pub(crate) struct Coverage {
 impl Coverage {
     pub(crate) fn new() -> Self {
         Self { store: BTreeMap::new() }
+    }
+
+    /// Reconstructs coverage from persisted chunk records.
+    pub(crate) fn from_chunk_records(chunk_size: usize, content_len: usize, chunks: &[ChunkRecord]) -> Self {
+        let mut coverage = Self::new();
+        for chunk in chunks {
+            let offset = crate::metadata::chunk_offset(chunk_size, chunk.chunk_index)
+                .expect("validated metadata chunk index should convert to an offset");
+            let length = crate::metadata::expected_chunk_len_for_index(chunk_size, content_len, chunk.chunk_index)
+                .expect("validated metadata chunk index should derive a chunk length");
+            coverage.insert(offset, length);
+        }
+        coverage
     }
 
     /// Gets a prior chunk that starts before or at the target offset.
@@ -27,6 +43,11 @@ impl Coverage {
     pub(crate) fn insert(&mut self, offset: usize, length: usize) {
         let end = offset.saturating_add(length);
         self.store.insert(offset, end);
+    }
+
+    /// Removes a tracked chunk by its starting offset.
+    pub(crate) fn remove(&mut self, offset: usize) {
+        self.store.remove(&offset);
     }
 }
 

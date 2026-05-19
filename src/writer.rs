@@ -1,39 +1,34 @@
-use bytes::Bytes;
-
-/// Trait describing how SparseIO stores sparse extents.
+/// Trait describing how SparseIO stores cache payload bytes.
 ///
-/// Implementations must preserve exact byte fidelity for stored extents and
+/// Implementations must preserve exact byte fidelity for stored payloads and
 /// expose stable, contract-level behavior:
-/// - `read_extent()` returns the exact bytes previously written at that offset.
-/// - missing extents are represented as empty bytes.
-/// - deleting a missing extent is a no-op.
-/// - writing the same offset twice is last-write-wins.
+/// - `get_cache()` returns the exact bytes previously written at the same key.
+/// - missing cache entries are represented as `None`.
+/// - deleting a missing cache entry is a no-op.
+/// - writing the same key twice is last-write-wins.
 ///
 /// Some examples include:
-/// - A networked store that uses KV storage to store extents, allowing for distributed sparse objects.
-/// - A file-backed store that uses an OS-provided sparse file <https://wiki.archlinux.org/title/Sparse_file>.
+/// - A networked store that uses KV storage to store cache payloads, allowing for distributed sparse objects.
+/// - A file-backed store that uses a cache directory of content files.
 /// - A hybrid-store that caches hot areas of files to disk and less-frequently accessed portions to cheaper storage
 ///   like S3.
 pub trait Writer: Send {
-    /// Creates or overwrites the extent at `offset` with `data`.
+    /// Creates or overwrites the payload stored at `key` with `value`.
     ///
-    /// The bytes written must be readable back verbatim via `read_extent()`
-    /// at the same offset. If the same offset is written more than once, the
-    /// most recent write wins.
-    fn create_extent(
-        &mut self,
-        offset: usize,
-        data: bytes::Bytes,
-    ) -> impl std::future::Future<Output = std::io::Result<()>> + Send;
+    /// The bytes written must be readable back verbatim via `get_cache()` at
+    /// the same key. If the same key is written more than once, the most
+    /// recent write wins.
+    fn set_cache(&mut self, key: &str, value: &[u8])
+        -> impl std::future::Future<Output = std::io::Result<()>> + Send;
 
-    /// Reads the extent stored at `offset`.
+    /// Reads the payload stored at `key`.
     ///
-    /// If no extent exists at the requested offset, implementations must
-    /// return empty bytes rather than an error.
-    fn read_extent(&self, offset: usize) -> impl std::future::Future<Output = std::io::Result<Bytes>> + Send;
+    /// If no payload exists at the requested key, implementations must return
+    /// `None` rather than an error.
+    fn get_cache(&self, key: &str) -> impl std::future::Future<Output = std::io::Result<Option<bytes::Bytes>>> + Send;
 
-    /// Deletes the extent stored at `offset`.
+    /// Deletes the payload stored at `key`.
     ///
-    /// Deleting a missing extent must succeed without error.
-    fn delete_extent(&mut self, offset: usize) -> impl std::future::Future<Output = std::io::Result<()>> + Send;
+    /// Deleting a missing cache payload must succeed without error.
+    fn delete_cache(&mut self, key: &str) -> impl std::future::Future<Output = std::io::Result<()>> + Send;
 }

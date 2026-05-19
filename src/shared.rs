@@ -47,3 +47,4 @@ impl std::error::Error for SharedIoError {}
 pub(crate) type SharedChunk = Shared<BoxFuture<'static, Result<Bytes, SharedIoError>>>;
 
 pub(crate) const DEFAULT_CHUNK_SIZE: usize = 128 * 1024; // 128 KiB
+pub(crate) const DEFAULT_PREFETCH_CHUNKS: usize = 8; // Default readahead (be congisant for TCP slow start)

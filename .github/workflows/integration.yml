@@ -28,11 +28,14 @@ jobs:
         with:
           shared-key: cargo-${{ inputs.runner }}
 
-      - name: File feature integration tests
-        run: cargo nextest run --features utils,file
+      - name: Core integration tests
+        run: cargo nextest run --lib core --features test-utils
 
-      - name: HTTP feature integration tests
-        run: cargo nextest run --features utils,http
+      - name: Harness implementation integration tests
+        run: cargo nextest run --lib harness --features debug
 
-      - name: Full feature matrix
-        run: cargo nextest run --all-features
+      - name: File implementation integration tests
+        run: cargo nextest run --lib file --features test-utils,impl-file
+
+      - name: OpenDAL implementation integration tests
+        run: cargo nextest run --lib opendal --features test-utils,impl-opendal

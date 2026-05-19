@@ -22,6 +22,9 @@ jobs:
         with:
           components: clippy
 
+      - name: Install cargo-hack
+        run: cargo install cargo-hack
+
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: cargo-${{ inputs.runner }}
@@ -31,24 +34,15 @@ jobs:
 
       - name: Rustfmt
         run: |
-          cargo +nightly fmt --all
-          if ! git diff --quiet; then
-            git status --short
-            git diff --stat
-            exit 1
-          fi
-
+          cargo +nightly fmt --all -- --check
+          
       - name: Clippy
         run: cargo clippy --all-features --all-targets -- -D warnings
 
       - name: Feature compile checks
         run: |
-          cargo check
-          cargo check --tests
-          cargo check --features file
-          cargo check --features http
-          cargo check --features debug
-          cargo check --all-features
+          cargo hack check --each-feature
+          cargo hack check --no-default-features
 
       - name: Docs.rs feature set
         run: RUSTDOCFLAGS='--cfg docsrs' cargo doc --all-features --no-deps

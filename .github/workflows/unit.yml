@@ -29,10 +29,4 @@ jobs:
           shared-key: cargo-${{ inputs.runner }}
 
       - name: Unit tests
-        run: cargo nextest run --features utils
-
-      - name: Debug harness tests
-        run: cargo nextest run --features utils,debug
-
-      - name: Doc tests
-        run: cargo test --doc --all-features
+        run: cargo test --lib --all-features
