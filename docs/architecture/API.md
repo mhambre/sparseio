@@ -36,4 +36,4 @@ to a key-value store and the user is expected to provide three functions to prod
 
 ## Sample User Application Diagram
 
-<img src="../static/sparseio-sample-implementation.png" alt="User implementation architecture diagram" width="600"/>
+<img src="../static/sparseio-sample-implementation.png" alt="User implementation architecture diagram" width="1000"/>
