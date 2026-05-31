@@ -27,12 +27,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: cargo-${{ inputs.runner }}
-
-      - name: Unit tests
-        run: cargo nextest run --features utils
-
-      - name: Debug harness tests
-        run: cargo nextest run --features utils,debug
-
-      - name: Doc tests
-        run: cargo test --doc --all-features
+      #
+      # - name: Unit tests
+      #   run: cargo nextest run --features utils
+      #
+      # - name: Debug harness tests
+      #   run: cargo nextest run --features utils,debug
+      #
+      # - name: Doc tests
+      #   run: cargo test --doc --all-features

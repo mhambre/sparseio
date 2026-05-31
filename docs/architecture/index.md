@@ -8,7 +8,7 @@ in scientific computing, machine learning, and data analytics.
 
 The goal is to make it as easy as possible for a developer to choose one-or-more upstream data
 sources to read from ([Reader](./API.md#Reader)), a downstream location to write cache to ([Writer](./API.md#Writer)),
-and a metadata management KV store to keep track of the data ([Metadata](./API.md#Metadata).
+and a metadata management KV store to keep track of the data ([Metadata](./API.md#Metadata)).
 
 ## Table of Contents
 
