@@ -55,31 +55,6 @@ This catches missing imports, cfg mistakes, and feature-gating regressions witho
 
 The unit workflow focuses on fast correctness checks that do not require the broader integration feature matrix.
 
-### Unit Tests
-
-- `cargo nextest run --features utils` runs the main unit-oriented test set with the `utils` feature enabled.
-
-### Debug Harness Tests
-
-- `cargo nextest run --features utils,debug` runs tests that require the debug harness feature set.
-
-### Doc Tests
-
-- `cargo test --doc --all-features` executes Rust documentation tests across the full feature set.
-
 ## Integration Workflow
 
 The integration workflow exercises feature-backed behavior and the broader end-to-end test matrix.
-
-### File Feature Integration Tests
-
-- `cargo nextest run --features utils,file` runs integration coverage for the file-backed reader and writer implementation.
-
-### HTTP Feature Integration Tests
-
-- `cargo nextest run --features utils,http` runs integration coverage for the HTTP reader implementation.
-
-### Full Feature Matrix
-
-- `cargo nextest run --all-features` runs the broadest integration-oriented test configuration.
-- This acts as the final end-to-end feature-combination check inside the integration workflow.

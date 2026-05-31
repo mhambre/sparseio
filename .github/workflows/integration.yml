@@ -27,3 +27,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: cargo-${{ inputs.runner }}
+
+      # - name: Integration tests
+      #   run: cargo nextest run --tests integration

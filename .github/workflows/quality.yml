@@ -18,14 +18,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: cargo-${{ inputs.runner }}
-
+      # - uses: dtolnay/rust-toolchain@stable
+      #   with:
+      #     components: clippy
+      #
+      # - uses: Swatinem/rust-cache@v2
+      #   with:
+      #     shared-key: cargo-${{ inputs.runner }}
+      #
       # - name: Install nightly rustfmt
       #   run: rustup toolchain install nightly --profile minimal --component rustfmt
       #

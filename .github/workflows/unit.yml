@@ -18,15 +18,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: nextest
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: cargo-${{ inputs.runner }}
+      # - uses: dtolnay/rust-toolchain@stable
+      #
+      # - uses: taiki-e/install-action@v2
+      #   with:
+      #     tool: nextest
+      #
+      # - uses: Swatinem/rust-cache@v2
+      #   with:
+      #     shared-key: cargo-${{ inputs.runner }}
       #
       # - name: Unit tests
       #   run: cargo nextest run --features utils
