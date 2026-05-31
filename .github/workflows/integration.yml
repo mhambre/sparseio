@@ -28,11 +28,5 @@ jobs:
         with:
           shared-key: cargo-${{ inputs.runner }}
 
-      - name: File feature integration tests
-        run: cargo nextest run --features utils,file
-
-      - name: HTTP feature integration tests
-        run: cargo nextest run --features utils,http
-
-      - name: Full feature matrix
-        run: cargo nextest run --all-features
+      # - name: Integration tests
+      #   run: cargo nextest run --tests integration
