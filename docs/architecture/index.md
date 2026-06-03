@@ -12,10 +12,13 @@ and a metadata management KV store to keep track of the data ([Metadata](./API.m
 
 ## Table of Contents
 
-- [Trait API](./API.md): An explanation of the Developer-facing API for leveraging SparseIO.
+- [Core Objects](./OBJECTS.md): An explanation of the core objects in our architecture, and
+  the decisions behind their design.
+  - [SparseIO Object](./OBJECTS.md#SparseIOObject)
+  - [ReaderRegistry](./OBJECTS.md#ReaderRegistry)
+  - [Viewer](./OBJECTS.md#Viewer)
+- [Trait API](./API.md): An explanation of the Developer-facing API for leveraging SparseIO with custom
+  resources.
   - [Reader](./API.md#Reader)
   - [Writer](./API.md#Writer)
   - [Metadata](./API.md#Metadata)
-- [Metadata Management](./MetadataManagement.md): An explanation of how we manage metadata for cache coverage and other relevant information to optimize read performance.
-- [Performance](./Performance.md): An explanation of the various performance optimizations we have implemented in SparseIO.
-- [User Debug Harness](./DebugHarness.md): How users can test their implementations of the above traits and validate correctness and performance.
