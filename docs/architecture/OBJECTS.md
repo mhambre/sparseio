@@ -6,7 +6,7 @@ The SparseIO object is the main interface for users of the library. It provides 
 backing logic management behind the interaction between the `Reader`, `Writer`,
 and `Metadata` objects to maintain the abstraction from the user.
 
-When a user creates a SparseIO object, they do it through a SparseIOBuilder, which
+When a user creates a SparseIO object, they do it through a `Builder`, which
 is a [builder pattern](https://www.lurklurk.org/effective-rust/builders.html) making
 it easy to construct the object without having to worry about defaults.
 
@@ -17,8 +17,8 @@ Three things are required to construct a SparseIO object:
 - A [ReaderRegistry](#ReaderRegistry) implementation
 
 There are some other tunable parameters that can be set in the builder, such as the
-`chunk_size`, control over prefetching behavior, etc. However these are explained a
-bit further in the [SparseIOBuilder docs](http://docs.rs/sparseio/latest/sparseio/struct.SparseIOBuilder.html).
+`chunk_size`. However these are explained a bit further in the
+[`Builder` docs](http://docs.rs/sparseio/latest/sparseio/struct.Builder.html).
 
 ## ReaderRegistry
 
@@ -50,6 +50,6 @@ When a user attempts to read an object through the `SparseIO` object through `Sp
 (e.g. `open("mysite+/path/to/object")`) they are actually getting back a `Viewer` object.
 The Viewer provides a couple of core methods for interacting with the data including:
 
-- `read(offset: usize, length: usize) -> io::Result<Bytes>`: Read a byte range from the object.
-- `len() -> usize`: Get the total length of the object in bytes.
-- `to_bytestream() -> impl Stream<Item = io::Result<Bytes>>`: Convert the Viewer to a bytestream for easier integration with async applications.
+- `read_at(&self, offset: usize, length: usize) -> io::Result<Bytes>`: Read a byte range from the object.
+- `len(&self) -> io::Result<usize>`: Get the total length of the object in bytes.
+- `bytestream(&self) -> ByteStream`: Convert the Viewer to a bytestream for easier integration with applications.

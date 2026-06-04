@@ -4,11 +4,11 @@ In this section we will go over the flow of how a read request is processed in S
 
 When a user initially constructs a SparseIO object they are required to provide a `Metadata`
 implementation, a `Writer` implementation, and a `ReaderRegistry` implementation loaded with
-the `Reader` implementations they want to use. This is all done through the `SparseIOBuilder` object, which
+the `Reader` implementations they want to use. This is all done through the `Builder` object, which
 provides a nice interface for constructing the `SparseIO` object without having to worry about defaults.
 
 Users can then call `SparseIO::open` with a canonicalized path to get back a `Viewer` object.
-This looks something like `instance.open(mysite+/path/to/object)`. The main component of the
+This looks something like `instance.open("mysite+/path/to/object")`. The main component of the
 viewer object is the `read_at()` method because it provides the core functionality
 behind the bytestream, and general reads.
 
