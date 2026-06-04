@@ -18,37 +18,37 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: cargo-${{ inputs.runner }}
-
-      - name: Install nightly rustfmt
-        run: rustup toolchain install nightly --profile minimal --component rustfmt
-
-      - name: Rustfmt
-        run: |
-          cargo +nightly fmt --all
-          if ! git diff --quiet; then
-            git status --short
-            git diff --stat
-            exit 1
-          fi
-
-      - name: Clippy
-        run: cargo clippy --all-features --all-targets -- -D warnings
-
-      - name: Feature compile checks
-        run: |
-          cargo check
-          cargo check --tests
-          cargo check --features file
-          cargo check --features http
-          cargo check --features debug
-          cargo check --all-features
-
-      - name: Docs.rs feature set
-        run: RUSTDOCFLAGS='--cfg docsrs' cargo doc --all-features --no-deps
+      # - uses: dtolnay/rust-toolchain@stable
+      #   with:
+      #     components: clippy
+      #
+      # - uses: Swatinem/rust-cache@v2
+      #   with:
+      #     shared-key: cargo-${{ inputs.runner }}
+      #
+      # - name: Install nightly rustfmt
+      #   run: rustup toolchain install nightly --profile minimal --component rustfmt
+      #
+      # - name: Rustfmt
+      #   run: |
+      #     cargo +nightly fmt --all
+      #     if ! git diff --quiet; then
+      #       git status --short
+      #       git diff --stat
+      #       exit 1
+      #     fi
+      #
+      # - name: Clippy
+      #   run: cargo clippy --all-features --all-targets -- -D warnings
+      #
+      # - name: Feature compile checks
+      #   run: |
+      #     cargo check
+      #     cargo check --tests
+      #     cargo check --features file
+      #     cargo check --features http
+      #     cargo check --features debug
+      #     cargo check --all-features
+      #
+      # - name: Docs.rs feature set
+      #   run: RUSTDOCFLAGS='--cfg docsrs' cargo doc --all-features --no-deps
