@@ -22,3 +22,5 @@ and a metadata management KV store to keep track of the data ([Metadata](./API.m
   - [Reader](./API.md#Reader)
   - [Writer](./API.md#Writer)
   - [Metadata](./API.md#Metadata)
+- [CAS](./CAS.md): An explanation of the Content Addressable Storage (CAS) system, which is a core component of our architecture for managing data efficiently.
+- [Flow](./FLOW.md): An explanation of the data flow within SparseIO, including how data is read, cached, and written back to storage.
