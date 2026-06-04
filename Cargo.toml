@@ -12,3 +12,6 @@ keywords = ["storage", "tokio", "fs", "filesystem", "stream"]
 readme = "README.md"
 license = "Apache-2.0"
 
+[dependencies]
+parking_lot = "0.12"
+bytes = "1.11"

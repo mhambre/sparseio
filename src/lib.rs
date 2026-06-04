@@ -1,6 +1,12 @@
-compile_error!(
-    r"
-This crate is currently undergoing an architectural refactor. Please stay patient
-and keep track of http://github.com/mhambre/sparseio for development updates.
-"
-);
+mod builder;
+mod globals;
+mod instance;
+mod registry;
+mod traits;
+mod types;
+mod utils;
+mod viewer;
+
+pub use instance::SparseIO;
+pub use registry::ReaderRegistry;
+pub use traits::{Metadata, Reader, Writer};
