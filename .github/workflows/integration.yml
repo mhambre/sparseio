@@ -29,4 +29,4 @@ jobs:
           shared-key: cargo-${{ inputs.runner }}
 
       # - name: Integration tests
-      #   run: cargo nextest run --tests integration
+      #   run: cargo nextest run --tests it
