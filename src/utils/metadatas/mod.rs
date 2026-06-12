@@ -1,3 +1,3 @@
-mod stub_metadata;
+mod mock_metadata;
 
-pub(crate) use stub_metadata::StubMetadata;
+pub(crate) use mock_metadata::MockMetadata;

@@ -1,3 +1,3 @@
-mod stub_writer;
+mod mock_writer;
 
-pub(crate) use stub_writer::StubWriter;
+pub(crate) use mock_writer::MockWriter;
