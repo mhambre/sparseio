@@ -93,21 +93,21 @@ mod tests {
 
     use super::Builder;
     use crate::ReaderRegistry;
-    use crate::utils::metadatas::StubMetadata;
-    use crate::utils::readers::StubReader;
-    use crate::utils::writers::StubWriter;
+    use crate::utils::metadatas::MockMetadata;
+    use crate::utils::readers::MockReader;
+    use crate::utils::writers::MockWriter;
 
-    fn writer() -> StubWriter {
-        StubWriter
+    fn writer() -> MockWriter {
+        MockWriter::new()
     }
 
-    fn metadata() -> StubMetadata {
-        StubMetadata
+    fn metadata() -> MockMetadata {
+        MockMetadata::new()
     }
 
     fn registry() -> ReaderRegistry {
         let mut registry = ReaderRegistry::new();
-        registry.register("stub", StubReader);
+        registry.register("stub", MockReader::new(bytes::Bytes::new()));
         registry
     }
 

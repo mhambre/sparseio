@@ -1,3 +1,3 @@
-mod stub_reader;
+mod mock_reader;
 
-pub(crate) use stub_reader::StubReader;
+pub(crate) use mock_reader::MockReader;

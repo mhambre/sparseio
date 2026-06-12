@@ -33,20 +33,22 @@ impl ReaderRegistry {
 mod tests {
     use std::io;
 
+    use async_trait::async_trait;
     use bytes::Bytes;
 
     use super::ReaderRegistry;
     use crate::Reader;
-    use crate::utils::readers::StubReader;
+    use crate::utils::readers::MockReader;
 
     struct LenReader(usize);
 
+    #[async_trait]
     impl Reader for LenReader {
-        fn len(&self) -> io::Result<usize> {
+        async fn len(&self) -> io::Result<usize> {
             Ok(self.0)
         }
 
-        fn read_at(&self, _offset: usize, _length: usize) -> io::Result<Bytes> {
+        async fn read_at(&self, _offset: usize, _length: usize) -> io::Result<Bytes> {
             unimplemented!("registry tests should not call reader read_at")
         }
     }
@@ -69,14 +71,14 @@ mod tests {
     fn register_makes_reader_retrievable_by_name() {
         let mut registry = ReaderRegistry::new();
 
-        registry.register("stub", StubReader);
+        registry.register("stub", MockReader::new(Bytes::new()));
 
         assert!(registry.get("stub").is_some());
         assert!(registry.get("other").is_none());
     }
 
-    #[test]
-    fn register_replaces_existing_reader_for_name() {
+    #[tokio::test]
+    async fn register_replaces_existing_reader_for_name() {
         let mut registry = ReaderRegistry::new();
 
         registry.register("source", LenReader(10));
@@ -84,6 +86,6 @@ mod tests {
 
         let reader = registry.get("source").expect("replacement reader should be registered");
 
-        assert_eq!(reader.len().expect("len should be readable"), 20);
+        assert_eq!(reader.len().await.expect("len should be readable"), 20);
     }
 }
