@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="500px" src="./docs/static/logo.png">
+  <img width="500px" src="./docs/static/logo.png" alt="SparseIO">
 </p>
 
 <p align="center">
@@ -20,98 +20,122 @@
   </a>
 </p>
 
-SparseIO is a Rust library for sparse, out-of-order materialization of large byte objects.
-
-Instead of eagerly copying an entire object from source to destination, SparseIO allows you to fetch only the chunks you ask for. It tracks what is already present for efficient caching, and deduplicates concurrent reads for the same chunk.
-
 <p align="center">
-<img width="600px" src="./docs/static/general-read.gif" alt="SparseIO animation showing a cache miss, prefetch, and cache hit as sparse chunks materialize.">
+  <strong>Fetch only what you need. Store each unique chunk once.</strong>
 </p>
 
-## Core Premise
+SparseIO is infrastructure and an extensible Rust library for coordinating sparse,
+out-of-order ranged fetches to materialize large-object
+[content-addressable storage (CAS)](./docs/architecture/CAS.md).
 
-Certain large data objects, such as multimedia files, system logs, columnar storage files used in AI and ML workloads, and archival records, are often accessed non-sequentially. In these scenarios, applications typically retrieve only specific byte ranges rather than reading the entire object. Loading all bytes upfront results in unnecessary I/O, increased latency, and inefficient bandwidth utilization. Selective or partial reads improve performance by reducing data transfer, accelerating processing, and optimizing resource consumption.
+Large objects are often consumed a few ranges at a time: a tensor from a model, a
+row group from a dataset, several blocks from a backup, or a segment from a media
+file. Fetching the entire object before serving the first useful byte wastes time,
+bandwidth, and storage. SparseIO materializes an object incrementally instead. A
+requested range is fetched from its upstream source, split into stable chunks, and
+stored by content hash so future reads can reuse it.
 
-SparseIO models this as:
+<p align="center">
+  <img
+    width="600px"
+    src="./docs/static/general-read.gif"
+    alt="SparseIO animation showing a cache miss, prefetch, and cache hit as sparse chunks materialize."
+  >
+</p>
 
-1. A `Reader` that can fetch bytes from an upstream source at an offset.
-2. A `Writer` that stores data extents in a local/closer destination representing the object sparsely.
-3. A coordinator (`SparseIO`) that:
-   - checks existing coverage for existing cache,
-   - deduplicates in-flight fetches so concurrent callers do not duplicate work,
-   - manages coverage metadata and cache.
+## Why SparseIO?
 
-## What You Get
+| Whole-object caching | SparseIO |
+| --- | --- |
+| Downloads every byte on the first miss | Fetches only the ranges callers request |
+| Stores repeated data once per object | Deduplicates equal chunks by content hash |
+| Can duplicate work during concurrent misses | Coalesces in-flight requests for the same chunk |
+| Couples the cache to a source or runtime | Uses pluggable, executor-neutral backend traits |
 
-- On-demand chunk materialization.
-- Coverage-aware reads from an extent store.
-- In-flight deduplication for concurrent requests.
-- Pluggable backends via `Reader` and `Writer` traits.
-- Optional source implementations in `sources` (feature-gated).
+This is especially useful for:
 
-## Current Feature Flags
+- AI/ML models and datasets where only selected tensors or shards are needed.
+- Database backups, VM images, and archives explored without a full restore.
+- Columnar data, logs, and scientific data read non-sequentially.
+- Media and other large remote objects served through byte-range requests.
 
-- `file`: file-backed `Reader`/`Writer` implementations.
-- `http`: reqwest-backed HTTP range-based `Reader` implementation.
+## How It Works
 
-## Quickstart
+For each range read, SparseIO:
 
-Run the file-to-file sparse example:
+1. Normalizes the requested range into fixed-size chunks.
+2. Looks up each chunk in the metadata index and local cache.
+3. Fetches missing chunks from the registered upstream [`Reader`](./docs/architecture/API.md#reader).
+4. Coalesces concurrent misses so only one upstream fetch does the work.
+5. Hashes and writes new chunks into the CAS through the configured [`Writer`](./docs/architecture/API.md#writer).
+6. Returns the requested bytes while the object becomes incrementally available.
 
-```bash
-cargo run --example file_to_file --features file -- \
-  --src target/manual/file-to-file-src.bin \
-  --dst target/manual/file-to-file-dst.bin \
-  --source-len 8388608 \
-  --chunk-size 262144 \
-  --fill-percent 35
-```
+Because chunks are addressed by their content, identical regions can be shared across
+objects and versions. A fine-tuned model, incremental database backup, or revised disk
+image only needs storage for the chunks that actually changed.
 
-The example intentionally materializes randomized chunk offsets first, then verifies:
+## Library and Infrastructure
 
-- full fill => destination matches source byte-for-byte,
-- partial fill => written chunks match source and unwritten regions remain zeroed.
+SparseIO is designed to work at two levels:
 
-See: `examples/file_to_file.rs` and `examples/file_to_file.md`.
+- **Embedded library:** compose storage systems directly in Rust using small,
+  object-safe [`Reader`](./docs/architecture/API.md#reader),
+  [`Writer`](./docs/architecture/API.md#writer), and
+  [`Metadata`](./docs/architecture/API.md#metadata) traits. The core remains independent
+  of Tokio or any other specific async executor.
+- **Deployable infrastructure:** expose sparse materialization to applications and
+  non-Rust clients through service interfaces.
 
-## Minimal API Shape
+Planned infrastructure includes:
 
-```rust
-use std::sync::Arc;
-use sparseio::Builder;
+- A [Redis/RESP][redis-resp] interface for accessing SparseIO from existing clients and tooling.
+- In-memory peers and trackers inspired by [Meta's Owl architecture][meta-owl]
+  for high-fanout, peer-assisted chunk distribution. Peers cache and transfer chunks;
+  trackers coordinate where peers fetch them and maintain a view of distribution
+  state.
 
-async fn demo() -> std::io::Result<()> {
-  // HTTP File -> Sparse Local File
-  let reader = sparseio::sources::http::Reader::new("https://stuff.mit.edu/afs/sipb/contrib/pi/pi-billion.txt");
-  let writer = sparseio::sources::file::Writer::new("pi.txt");
+The backend contracts intentionally stay narrow:
 
-  let io = Arc::new(
-    Builder::new()
-      .chunk_size(1 * 1024)
-      .reader(reader)
-      .writer(writer)
-      .build()
-      .await?
-  );
+| Component | Responsibility | Example implementations |
+| --- | --- | --- |
+| [`Reader`](./docs/architecture/API.md#reader) | Fetch byte ranges from an upstream object | HTTP, S3, Hugging Face, local files |
+| [`Writer`](./docs/architecture/API.md#writer) | Store and retrieve content-addressed chunks | Local disk, object storage, distributed caches |
+| [`Metadata`](./docs/architecture/API.md#metadata) | Track object coverage and chunk lifecycle | Redis, another key-value store, embedded state |
+| [`ReaderRegistry`](./docs/architecture/OBJECTS.md#readerregistry) | Route canonical object paths to readers | Application-defined source schemes |
 
-  // Get a viewer into the Sparse store
-  let mut viewer = io.viewer();
-  viewer.seek(1_000_002)?; // 2 to account for '3.'
+Bring the systems that fit your workload; SparseIO coordinates the read path, sparse
+coverage, in-flight work, and CAS materialization.
 
-  let mut buffer_1: [u8; 1] = [0]; // Digit 1,000,000
-  let mut buffer_2: [u8; 1] = [0]; // Digit 1,000,001
+## Design Goals
 
-  // Gets 1 KiB chunk containing digit from Webserver and fills buffer with chunk
-  viewer.read(&mut buffer_1).await?;
-  // Cached 1 KiB chunk means this is cached locally and much faster
-  viewer.read(&mut buffer_2).await?;
+- **Sparse by default:** requesting one range never requires materializing the whole
+  object.
+- **Backend agnostic:** sources, chunk storage, and metadata are replaceable.
+- **Runtime neutral:** the library remains usable from Tokio, smol, async-std, and
+  other executors.
+- **Safe under concurrency:** overlapping requests share work instead of multiplying
+  upstream traffic.
+- **Cache, not custody:** missing or expired cached chunks fall back to the source of
+  truth.
 
-  Ok(())
-}
-```
+## Project Status
+
+SparseIO is under active development. The core traits and architecture are taking
+shape, but the read path, backend integrations, service infrastructure, and public API
+are not yet ready for production use. The Redis/RESP interface and Owl-inspired
+in-memory peer and tracker implementations are planned work. Feedback from storage,
+data infrastructure, and ML systems builders is welcome while these interfaces are
+still evolving.
 
 ## Documentation
 
-- [Usage Documentation](https://crates.io/crates/sparseio): Guides on how to use in your application.
-- [Library Documentation](https://docs.rs/sparseio): Traits, methods, etc.
-- [Development, Design, Architecture](./docs/index.md): Design decisions, diagrams, etc.
+- [Architecture and design](./docs/index.md)
+- [Testing](./docs/testing/index.md)
+- [Trait validation](./docs/testing/VALIDATION.md)
+- [Trait API](./docs/architecture/API.md)
+- [Content-addressable storage](./docs/architecture/CAS.md)
+- [Read flow](./docs/architecture/FLOW.md)
+- [Library API documentation](https://docs.rs/sparseio)
+
+[meta-owl]: https://engineering.fb.com/2022/07/14/data-infrastructure/owl-distributing-content-at-meta-scale/
+[redis-resp]: https://redis.io/docs/latest/develop/reference/protocol-spec/

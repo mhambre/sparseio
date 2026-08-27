@@ -30,6 +30,11 @@ pub trait Writer: Send + Sync {
 }
 
 /// Key-value metadata store used for coverage maps and CAS reference counts.
+///
+/// Implementations must preserve consistency across concurrent calls using the
+/// locking, versioning, conditional update, and retry semantics appropriate for
+/// their backend. `Send + Sync` permits shared access but provides no
+/// transactional guarantees.
 #[async_trait]
 pub trait Metadata: Send + Sync {
     /// Retrieve a value from the metadata store.
