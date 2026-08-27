@@ -1,6 +1,7 @@
 # Animations
 
-This directory holds short `manim` scenes used to generate README-friendly animations for SparseIO.
+This directory holds short [Manim](https://www.manim.community/) scenes used to
+generate README-friendly animations for SparseIO.
 
 ## Layout
 
@@ -15,7 +16,7 @@ python3 -m pip install --upgrade pip
 python3 -m pip install -r requirements.txt
 ```
 
-`ffmpeg` is also required for GIF output.
+[FFmpeg](https://ffmpeg.org/) is also required for GIF output.
 
 ## Rendering
 

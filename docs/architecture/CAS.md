@@ -1,29 +1,52 @@
 # Content-Addressable Storage (CAS)
 
-In order to optimize our cache storage efficiency we utilize a content-addressable storage (CAS) system.
-Large storage services take advantage of this for files that may be duplicated with only partial differences.
-This can be especially useful for AI/ML workloads and is exactly how HuggingFace stores their models and
-datasets through their XET architecture. It also has its uses in storage of database backups, ISOs, and more.
+SparseIO uses content-addressable storage (CAS) to improve cache efficiency when large
+objects contain repeated data. This is especially useful for AI/ML artifacts, database
+backups, disk images, and other objects whose versions differ by only a subset of their
+chunks. Hugging Face uses the same general approach in its [Xet storage backend][hf-xet].
 
-Below you can see a simple example of how CAS deduplicates data. In this example we have two documents that are
-mostly the same except for the middle paragraph. Rather than caching 6 chunks of data total (3 for each document),
-we are able to dedupe the first and last chunk, resulting in only 4 chunks of data being stored in our cache. In
-something like a SFT (Supervised Finetuned) model, this can be a huge space saver as large amounts of tensors may
-remain unchanged, or for full database backup where only a few records may have changed since the last backup.
+The diagram below shows two documents that differ only in their middle chunk. Rather
+than caching six chunks in total, CAS shares the matching first and last chunks and
+stores only four unique chunks. This can save substantial space for a supervised
+fine-tuned model whose tensors mostly remain unchanged or for a full database backup
+in which only a few records changed.
 
 <img src="../static/sparseio-cas-split-diagram.png" alt="CAS Example" width="1200"/>
 
-In our architecture when a read request is initially made for a file we first check in our Metadata store to see
-if we have the data for that file at the requested offset, this is precisely why chunk lengths are declared immutable,
-we assert that you cannot construct a SparseIO instance from a metadata store tracking a different chunk size.
-If we don't have the chuk we retrieve the data using a Reader and calculate the SHA256 hash of the requested byte range
-and check if it exists already in our cache. If it does we can just map the key for that specific offset in the file to
-the hash of the respective chunk. Otherwise we use our Writer to write the chunk to cache while also mapping the key.
-This is where the content-addressable part comes in, we are using the hash of the content to map it as a location
-in our cache.
+## Insertion
 
-The problem with this approach however is that we are unable to invalidate cache when a file is removed
-or an eviction policy is triggered. As such we use a separate key in our metadata store to keep track of the
-reference count for each hash in our cache. If we attempt to delete a chunk from cache and the reference count
-is greater than 1 we just decrement the reference count and leave the chunk in cache. In the case that it ends up
-being 1 we know we can safely delete the chunk.
+When a range is requested, SparseIO first checks the configured
+[`Metadata`](./API.md#metadata) store for a mapping at the requested object offset.
+Chunk size is immutable for a [`SparseIO`](./OBJECTS.md#sparseio) instance because an
+existing coverage map is meaningful only when readers use the same chunk boundaries.
+
+If no mapping exists, the [`Reader`](./API.md#reader) fetches the chunk and SparseIO
+calculates its SHA-256 content hash. An existing hash can be mapped to the object offset
+without storing the bytes again. Otherwise, the [`Writer`](./API.md#writer) stores the
+new chunk under its hash before the metadata mapping is published.
+
+## Deletion
+
+Invalidation is more complicated because several object offsets may refer to the same
+CAS chunk. A strict reference count is tempting, but it requires the metadata backend
+to provide an atomic decrement or update operation to stay correct across concurrent
+or distributed deletes. Versioning has the same requirement unless the backend also
+supports conditional writes. SparseIO keeps these coordination primitives out of the
+core [`Metadata`](./API.md#metadata) API.
+
+Instead, CAS chunks are treated as a loose cache. Each chunk has an expiry key in
+metadata, and inserting, reading, or marking a referenced chunk sets that expiry to
+`now + cache_lifetime`. A garbage-collection (GC) pass can scan metadata mappings,
+refresh expiry keys for referenced chunks, and delete expired chunks from both
+metadata and cache. If a stale mapping points to a missing chunk, the
+[read path](./FLOW.md#read-path) treats it as a cache miss and fetches the data from the
+upstream source again.
+
+GC is process-specific, so a `gc_lock` metadata key prevents multiple processes from
+running it at the same time. The lock uses touch time to permit recovery when a process
+crashes while holding it. A race or duplicate deletion is recoverable because failed
+cache reads fall back to the upstream source. See the
+[expiry-based lifecycle decision](./DECISIONS.md#expiry-based-cas-lifecycle) for the
+trade-offs behind this design.
+
+[hf-xet]: https://huggingface.co/docs/hub/xet/index
