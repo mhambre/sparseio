@@ -35,6 +35,11 @@ formatting, linting, and compile validation must pass before the test fan-out be
 
 The quality workflow performs static validation and build verification before tests run.
 
+### [Typos][typos]
+
+- `typos` checks source code and documentation for spelling mistakes.
+- Version `1.49.0` is pinned so dictionary updates do not unexpectedly break the pipeline.
+
 ### [rustfmt][rustfmt]
 
 - `cargo +nightly fmt --all` checks formatting consistency by reformatting the workspace.
@@ -67,3 +72,4 @@ The integration workflow exercises feature-backed behavior and the broader end-t
 [clippy]: https://doc.rust-lang.org/clippy/
 [docs-rs]: https://docs.rs/
 [rustfmt]: https://github.com/rust-lang/rustfmt
+[typos]: https://github.com/crate-ci/typos

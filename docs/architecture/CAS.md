@@ -11,7 +11,7 @@ stores only four unique chunks. This can save substantial space for a supervised
 fine-tuned model whose tensors mostly remain unchanged or for a full database backup
 in which only a few records changed.
 
-<img src="../static/sparseio-cas-split-diagram.png" alt="CAS Example" width="1200"/>
+<img src="../static/sparseio-cas-split-diagram.png" alt="CAS Example" width="1000"/>
 
 ## Insertion
 
