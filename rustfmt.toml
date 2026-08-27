@@ -1,0 +1,7 @@
+# Rust Formatting Standards
+
+comment_width = 120
+format_code_in_doc_comments = true
+group_imports = "StdExternalCrate"
+imports_granularity = "Item"
+wrap_comments = true
