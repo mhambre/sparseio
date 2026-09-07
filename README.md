@@ -35,11 +35,23 @@ bandwidth, and storage. SparseIO materializes an object incrementally instead. A
 requested range is fetched from its upstream source, split into stable chunks, and
 stored by content hash so future reads can reuse it.
 
+## Sparse Reads
+
 <p align="center">
   <img
     width="600px"
     src="./docs/static/general-read.gif"
     alt="SparseIO animation showing a cache miss, prefetch, and cache hit as sparse chunks materialize."
+  >
+</p>
+
+## CAS Deduplication
+
+<p align="center">
+  <img
+    width="600px"
+    src="./docs/static/cas.gif"
+    alt="Three upstream files share identical A chunks in one cache entry, while distinct B and C chunks keep separate entries."
   >
 </p>
 
@@ -59,6 +71,22 @@ This is especially useful for:
 - Columnar data, logs, and scientific data read non-sequentially.
 - Media and other large remote objects served through byte-range requests.
 
+## Controlled Workload Snapshot
+
+The 64 KiB loopback API workload applies deterministic network latency, jitter,
+bandwidth, and a 16-request upstream concurrency limit. In a 1,000-request local run:
+
+| p99 result | Regional profile | WAN profile |
+| --- | ---: | ---: |
+| SparseIO cold range versus direct OpenDAL | 30.83 ms, 1.4% higher | 83.95 ms, 0.8% higher |
+| SparseIO warm range versus direct source | 184.45 us, 99.4% lower | 237.95 us, 99.7% lower |
+| SparseIO singleflight versus 32-way direct fan-out | 32.16 ms, 47.6% lower | 83.89 ms, 48.6% lower |
+
+Across 32 fan-out batches, direct readers made 1,024 observed upstream range requests
+while SparseIO made 32. These are reproducible workload results, not public internet
+claims or portable hardware guarantees. See [Benchmarking](./docs/testing/BENCHMARKS.md)
+for the schedules, profiles, full metrics, and reproduction commands.
+
 ## How It Works
 
 For each range read, SparseIO:
@@ -74,25 +102,13 @@ Because chunks are addressed by their content, identical regions can be shared a
 objects and versions. A fine-tuned model, incremental database backup, or revised disk
 image only needs storage for the chunks that actually changed.
 
-## Library and Infrastructure
+## Library Composition
 
-SparseIO is designed to work at two levels:
-
-- **Embedded library:** compose storage systems directly in Rust using small,
-  object-safe [`Reader`](./docs/architecture/API.md#reader),
-  [`Writer`](./docs/architecture/API.md#writer), and
-  [`Metadata`](./docs/architecture/API.md#metadata) traits. The core remains independent
-  of Tokio or any other specific async executor.
-- **Deployable infrastructure:** expose sparse materialization to applications and
-  non-Rust clients through service interfaces.
-
-Planned infrastructure includes:
-
-- A [Redis/RESP][redis-resp] interface for accessing SparseIO from existing clients and tooling.
-- In-memory peers and trackers inspired by [Meta's Owl architecture][meta-owl]
-  for high-fanout, peer-assisted chunk distribution. Peers cache and transfer chunks;
-  trackers coordinate where peers fetch them and maintain a view of distribution
-  state.
+Compose storage systems directly in Rust using small, object-safe
+[`Reader`](./docs/architecture/API.md#reader),
+[`Writer`](./docs/architecture/API.md#writer), and
+[`Metadata`](./docs/architecture/API.md#metadata) traits. The core remains independent
+of Tokio or any other specific async executor.
 
 The backend contracts intentionally stay narrow:
 
@@ -120,22 +136,17 @@ coverage, in-flight work, and CAS materialization.
 
 ## Project Status
 
-SparseIO is under active development. The core traits and architecture are taking
-shape, but the read path, backend integrations, service infrastructure, and public API
-are not yet ready for production use. The Redis/RESP interface and Owl-inspired
-in-memory peer and tracker implementations are planned work. Feedback from storage,
-data infrastructure, and ML systems builders is welcome while these interfaces are
-still evolving.
+SparseIO is under active pre-1.0 development. The initial sparse read coordinator,
+cache lifecycle, reference backends, validators, and feature-gated test support are
+implemented. The public API may still evolve before production stability is declared.
 
 ## Documentation
 
 - [Architecture and design](./docs/index.md)
 - [Testing](./docs/testing/index.md)
 - [Trait validation](./docs/testing/VALIDATION.md)
+- [Benchmarking](./docs/testing/BENCHMARKS.md)
 - [Trait API](./docs/architecture/API.md)
 - [Content-addressable storage](./docs/architecture/CAS.md)
 - [Read flow](./docs/architecture/FLOW.md)
 - [Library API documentation](https://docs.rs/sparseio)
-
-[meta-owl]: https://engineering.fb.com/2022/07/14/data-infrastructure/owl-distributing-content-at-meta-scale/
-[redis-resp]: https://redis.io/docs/latest/develop/reference/protocol-spec/
