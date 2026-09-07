@@ -1,0 +1,45 @@
+name: CI / Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality
+    uses: ./.github/workflows/quality.yml
+    with:
+      runner: windows-latest
+
+  unit:
+    name: Unit
+    needs: [quality]
+    uses: ./.github/workflows/unit.yml
+    with:
+      runner: windows-latest
+
+  integration:
+    name: Disk writer integration
+    needs: [quality]
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cargo-windows-latest
+
+      - name: Windows disk writer contracts
+        run: cargo test --test contracts --features testing,disk-writer disk_writer_contract::
+
+      - name: API benchmark smoke test
+        run: cargo bench --bench api_workloads --features memory-metadata,disk-writer,opendal-reader-hf -- --test

@@ -12,6 +12,9 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  CORE_FEATURES: testing,memory-metadata,disk-writer,opendal-reader-fs,validators
+  API_BENCHMARK_FEATURES: memory-metadata,disk-writer,opendal-reader-hf
+  COMPONENT_BENCHMARK_FEATURES: memory-metadata,disk-writer,opendal-reader-fs
 
 jobs:
   code-quality:
@@ -40,21 +43,35 @@ jobs:
         run: rustup toolchain install nightly --profile minimal --component rustfmt
 
       - name: Rustfmt
-        run: |
-          cargo +nightly fmt --all
-          if ! git diff --quiet; then
-            git status --short
-            git diff --stat
-            exit 1
-          fi
+        run: cargo +nightly fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy --all-features --all-targets -- -D warnings
+        run: |
+          cargo clippy --all-targets --features "${{ env.CORE_FEATURES }}" -- -D warnings
+          cargo clippy --bench api_workloads --features "${{ env.API_BENCHMARK_FEATURES }}" -- -D warnings
 
       - name: Feature compile checks
         run: |
           cargo check
           cargo check --tests
+          cargo check --features opendal-reader-memory
+          cargo check --features opendal-reader-http
+          cargo check --features opendal-reader-hf
+          cargo check --features opendal-reader-s3
+          cargo check --features opendal-reader-sftp
+
+      - name: Install MSRV toolchain
+        run: rustup toolchain install 1.91.0 --profile minimal
+
+      - name: MSRV
+        run: cargo +1.91.0 check --all-targets --features "${{ env.CORE_FEATURES }}"
+
+      - name: Benchmarks compile
+        run: |
+          cargo bench --benches --features "${{ env.COMPONENT_BENCHMARK_FEATURES }}" --no-run
+          cargo bench --bench api_workloads --features "${{ env.API_BENCHMARK_FEATURES }}" --no-run
 
       - name: Docs.rs feature set
-        run: RUSTDOCFLAGS='--cfg docsrs' cargo doc --all-features --no-deps
+        env:
+          RUSTDOCFLAGS: --cfg docsrs -D warnings -D missing-docs
+        run: cargo doc --features "${{ env.CORE_FEATURES }}" --no-deps

@@ -12,6 +12,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  CORE_FEATURES: testing,memory-metadata,disk-writer,opendal-reader-fs,validators
 
 jobs:
   unit:
@@ -31,8 +32,8 @@ jobs:
         with:
           shared-key: cargo-${{ inputs.runner }}
 
-      - name: Unit tests (no features)
-        run: cargo nextest run --lib
+      - name: Unit tests
+        run: cargo nextest run --lib --features "${{ env.CORE_FEATURES }}"
 
       - name: Doc tests
-        run: cargo test --doc --all-features
+        run: cargo test --doc --features "${{ env.CORE_FEATURES }}"

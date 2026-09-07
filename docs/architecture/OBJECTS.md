@@ -2,53 +2,43 @@
 
 ## `SparseIO`
 
-The `SparseIO` object is the main interface for users of the library. It provides the
-backing logic behind interactions between [`Reader`](./API.md#reader),
-[`Writer`](./API.md#writer), and [`Metadata`](./API.md#metadata) implementations while
-keeping those details abstracted from the user.
+`SparseIO` coordinates an upstream [`Reader`](./API.md#reader), a cache
+[`Writer`](./API.md#writer), and a [`Metadata`](./API.md#metadata) index. Instances are
+cheap to clone because immutable configuration and in-flight work are shared.
 
-Users create a `SparseIO` instance through a `Builder`, which follows the
-[builder pattern](https://rust-unofficial.github.io/patterns/patterns/creational/builder.html)
-and makes the object easy to construct without requiring users to manage defaults.
+Construction uses `SparseIO::builder()` and requires:
 
-Three things are required to construct a `SparseIO` instance:
+- A `Writer` implementation.
+- A `Metadata` implementation.
+- A `ReaderRegistry` containing at least the URI schemes the application opens.
 
-- A [`Writer`](./API.md#writer) implementation.
-- A [`Metadata`](./API.md#metadata) implementation.
-- A [`ReaderRegistry`](#readerregistry) implementation.
-
-The builder also configures tunable parameters such as `chunk_size`. See the
-[`Builder` API][builder-docs] for the complete configuration surface.
+Chunk size and per-read chunk concurrency are immutable after construction. The
+defaults are 64 KiB and 16 operations. Permanent caching is the default; expiring
+caching is opt-in through `cache::CachePolicy`.
 
 ## `ReaderRegistry`
 
-An important design decision is how to cleanly support constructing and reconstructing
-`SparseIO` objects while keeping metadata serializable. `ReaderRegistry` maps a
-`Reader` implementation to a recipe for reconstruction based on serialized metadata.
+`ReaderRegistry` maps case-insensitive URI schemes to object-safe `ReaderFactory`
+trait objects. `SparseIO::open` passes the complete canonical URI to the selected
+factory, which constructs an object-bound `Reader`. This keeps serialized identities
+independent from concrete readers and lets `register_many` share one factory under
+several schemes.
 
-This leaves users responsible for managing the `ReaderRegistry` so existing metadata
-remains supported by every `Reader` implementation in the registry.
-
-The registry also defines how users select a `Reader` when opening an object. For
-example, a `Reader` dedicated to a website could be registered under `service`, making
-its canonical object path `service://path/to/object`. This allows one `SparseIO`
-instance to manage readers backed by several sources.
-
-To support reconstruction, the `Reader` trait also requires implementations of
-`From<&str>` and `From<String>`. Each conversion receives the object path after the
-registry identifier has been removed.
+Applications must keep every scheme referenced by their metadata available. Registering
+a scheme again replaces its prior factory.
 
 ## `Viewer`
 
-`Viewer` cannot be constructed directly by users, but it is one of the most frequently
-used objects in the architecture. It hides the work performed among the `Reader`,
-`Writer`, and `Metadata` implementations.
+`SparseIO::open("service://path/to/object")` returns a cloneable `Viewer`. Opening is
+synchronous because registry factories construct readers synchronously; backend I/O
+begins when an async method is polled.
 
-Calling `SparseIO::open`, for example `instance.open("service://path/to/object")`,
-returns a `Viewer`. Its core methods are:
+The primary methods are:
 
-- `read_at(&self, offset: usize, length: usize) -> io::Result<Bytes>`: Read a byte range from the object.
-- `len(&self) -> io::Result<usize>`: Get the total length of the object in bytes.
-- `bytestream(&self) -> ByteStream`: Convert the `Viewer` to a byte stream for easier application integration.
+- `read_at(offset, length)`: asynchronously read a byte window, truncated at EOF.
+- `len()`: asynchronously load and cache the stable object length for this viewer.
+- `is_empty()`: report whether the object has zero bytes.
+- `bytestream()`: return an executor-neutral futures `Stream` of ordered chunks.
 
-[builder-docs]: https://docs.rs/sparseio/latest/sparseio/struct.Builder.html
+`offset == len` is valid and returns empty bytes. An offset beyond EOF and arithmetic
+overflow return structured `sparseio::Error` values.

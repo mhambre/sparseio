@@ -1,52 +1,50 @@
-# Content-Addressable Storage (CAS)
+# Content-Addressable Cache
 
-SparseIO uses content-addressable storage (CAS) to improve cache efficiency when large
-objects contain repeated data. This is especially useful for AI/ML artifacts, database
-backups, disk images, and other objects whose versions differ by only a subset of their
-chunks. Hugging Face uses the same general approach in its [Xet storage backend][hf-xet].
+SparseIO stores each materialized chunk under the lowercase hexadecimal SHA-256
+digest of its bytes. Object metadata maps a canonical URI hash and normalized chunk
+offset to that content key. Equal chunks therefore share one writer entry even when
+they belong to different objects.
 
-The diagram below shows two documents that differ only in their middle chunk. Rather
-than caching six chunks in total, CAS shares the matching first and last chunks and
-stores only four unique chunks. This can save substantial space for a supervised
-fine-tuned model whose tensors mostly remain unchanged or for a full database backup
-in which only a few records changed.
+## Publication
 
-<img src="../static/sparseio-cas-split-diagram.png" alt="CAS Example" width="1000"/>
+A cold read follows this order:
 
-## Insertion
+1. Fetch the exact normalized range from the upstream reader.
+2. Hash the bytes to derive their content key.
+3. In expiring mode, claim a renewable publication marker for the content key.
+4. Write the bytes under their content key.
+5. Record the object generation and content key in the offset mapping.
+6. Replace the publication marker with the content expiration.
 
-When a range is requested, SparseIO first checks the configured
-[`Metadata`](./API.md#metadata) store for a mapping at the requested object offset.
-Chunk size is immutable for a [`SparseIO`](./OBJECTS.md#sparseio) instance because an
-existing coverage map is meaningful only when readers use the same chunk boundaries.
+Publishing the mapping after the bytes makes an interrupted write a recoverable cache
+miss instead of visible coverage without data. Reads also treat malformed mappings,
+missing blobs, wrong-sized blobs, and stale generations as misses. Cleanup uses
+`compare_exchange` so it cannot delete a concurrently replaced value.
 
-If no mapping exists, the [`Reader`](./API.md#reader) fetches the chunk and SparseIO
-calculates its SHA-256 content hash. An existing hash can be mapped to the object offset
-without storing the bytes again. Otherwise, the [`Writer`](./API.md#writer) stores the
-new chunk under its hash before the metadata mapping is published.
+## Invalidation
 
-## Deletion
+`SparseIO::invalidate` atomically advances an object's generation, then removes its old
+offset mappings. In-flight reads carry the generation they observed and check it again
+before publishing. A read racing invalidation can return source bytes to its caller,
+but it cannot make stale coverage visible to later reads.
 
-Invalidation is more complicated because several object offsets may refer to the same
-CAS chunk. A strict reference count is tempting, but it requires the metadata backend
-to provide an atomic decrement or update operation to stay correct across concurrent
-or distributed deletes. Versioning has the same requirement unless the backend also
-supports conditional writes. SparseIO keeps these coordination primitives out of the
-core [`Metadata`](./API.md#metadata) API.
+Invalidation removes object coverage, not shared content blobs. Permanent cache content
+remains until the writer is managed externally. Expiring content becomes eligible for
+garbage collection after no current mapping references it.
 
-Instead, CAS chunks are treated as a loose cache. Each chunk has an expiry key in
-metadata, and inserting, reading, or marking a referenced chunk sets that expiry to
-`now + cache_lifetime`. A garbage-collection (GC) pass can scan metadata mappings,
-refresh expiry keys for referenced chunks, and delete expired chunks from both
-metadata and cache. If a stale mapping points to a missing chunk, the
-[read path](./FLOW.md#read-path) treats it as a cache miss and fetches the data from the
-upstream source again.
+## Expiration and Garbage Collection
 
-GC is process-specific, so a `gc_lock` metadata key prevents multiple processes from
-running it at the same time. The lock uses touch time to permit recovery when a process
-crashes while holding it. A race or duplicate deletion is recoverable because failed
-cache reads fall back to the upstream source. See the
-[expiry-based lifecycle decision](./DECISIONS.md#expiry-based-cas-lifecycle) for the
-trade-offs behind this design.
+Permanent caching is the default and records no expiration metadata.
+`CachePolicy::Expiring` refreshes a content expiration on materialization and warm
+reads. Garbage collection is explicit through `SparseIO::collect_garbage`; SparseIO
+does not start a timer or background task.
 
-[hf-xet]: https://huggingface.co/docs/hub/xet/index
+One collection pass acquires a metadata lease with `compare_exchange`, removes stale
+mappings, discovers all currently referenced content, refreshes those expirations, and
+deletes expired unreferenced blobs. Compare-and-set publication and deletion markers
+coordinate slow writes with blob removal. Failed writer deletion restores the previous
+expiration on a best-effort basis. Later collectors resume stale unreferenced markers
+and recover referenced markers left by interrupted operations.
+
+This lifecycle favors a low-latency read path. Collection performs the global scans and
+is intentionally controlled by the embedding application.

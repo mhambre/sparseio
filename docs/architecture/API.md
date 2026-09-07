@@ -1,66 +1,76 @@
 # Trait API
 
-Backend traits transfer payloads as owned [`Bytes`][bytes] values so large ranges can
-move across the API without requiring an additional buffer copy.
+Backend traits are object-safe, asynchronous, `Send + Sync`, and return
+`sparseio::Result`. Payloads cross trait boundaries as owned [`Bytes`][bytes] values so
+large buffers can move without mandatory copies. SparseIO does not install an executor
+or start background work.
 
 ## `Reader`
 
-The `Reader` trait is responsible for reading data from the upstream data source. This could be an S3 bucket,
-a HuggingFace repository, a remote FTP server, a custom user-defined storage service, or any other distant data source.
-The only requirement is the ability to read explicit byte ranges from the data source. As such the user must provide
-two functions to produce a functional `Reader`:
+`Reader` represents one immutable upstream object:
 
-- `async fn len(&self) -> io::Result<usize>`: Return the number of bytes in the data source.
-- `async fn read_at(&self, offset: usize, length: usize) -> io::Result<Bytes>`: Read a byte range from the data source.
+- `len()` returns its byte length.
+- `read_at(offset, length)` returns exactly the requested range.
 
-**Note:** It is up to the developer to ensure access patterns made by the `Reader` are efficient for the underlying
-data source (i.e. managing rate limits, connection pooling, etc.). SparseIO will not attempt to optimize access patterns
-for the `Reader` to preserve generality and flexibility.
+SparseIO normalizes calls to configured chunk boundaries and never asks a reader for a
+range beyond the length it reported. Implementations should use native range operations;
+downloading a complete remote object defeats sparse materialization.
+
+## `ReaderFactory`
+
+`ReaderFactory::create(uri)` receives the complete canonical object URI and returns a
+shared object-bound reader. `ReaderRegistry` stores factories instead of constructed
+readers, preserving trait-object safety and per-object configuration.
 
 ## `Writer`
 
-The `Writer` trait is responsible for writing data to the downstream cache in order to optimize access
-speeds on future reads. This could be a local disk, a remote cache server, or any other location where data
-can be written. As such the user is expected to provide three functions to produce a functional `Writer`:
+`Writer` is a loose content-addressed cache:
 
-- `async fn write(&self, key: &str, value: Bytes) -> io::Result<()>`: Write `value` to the cache under `key`.
-- `async fn read(&self, key: &str) -> io::Result<Option<Bytes>>`: Read bytes from the cache under `key`.
-- `async fn delete(&self, key: &str) -> io::Result<()>`: Delete a key from the cache.
+- `write(key, value)` stores exact bytes under a key.
+- `read(key)` returns `None` when the key is absent.
+- `delete(key)` idempotently removes cached bytes.
+
+SparseIO publishes a metadata mapping only after `write` succeeds. Writer data is never
+treated as the source of truth.
 
 ## `Metadata`
 
-The `Metadata` trait is responsible for keeping track of the data in the cache, the state of cache coverage for
-individual data sources, and other relevant metadata for the application. As such it is just a generic interface
-to a key-value store and the user is expected to provide four functions to produce a functional `Metadata` store:
+`Metadata` stores coverage, object generations, expirations, and GC leases:
 
-The `Metadata` trait does not provide transactional, locking, versioning, or retry semantics. A
-[`SparseIO`](./OBJECTS.md#sparseio) instance may make concurrent requests to the metadata store, and multiple
-instances or processes may share the same backend.
-The consumer providing the `Metadata` implementation is responsible for preserving consistency across those
-requests. Depending on the backend and stored data, this may require per-key locking or leases, versioned values
-with conditional updates, idempotent operations, and retries when concurrent updates conflict or transient
-operations fail.
+- `get`, `set`, and `delete` provide basic key-value operations.
+- `scan_prefix` returns matching entries in backend-defined order.
+- `compare_exchange` atomically replaces or deletes a value only when it equals the
+  supplied expected value.
 
-- `async fn get(&self, key: &str) -> io::Result<Option<Bytes>>`: Get a value from the metadata store.
-- `async fn set(&self, key: &str, value: Bytes) -> io::Result<()>`: Set a value in the metadata store.
-- `async fn delete(&self, key: &str) -> io::Result<()>`: Delete a key from the metadata store.
-- `async fn scan_prefix(&self, prefix: &str) -> io::Result<Vec<(String, Bytes)>>`: Return entries whose keys start with `prefix`.
+`compare_exchange` must distinguish an absent key from an empty byte value. It is the
+consistency boundary used for invalidation cleanup and garbage-collection leases.
+Distributed implementations remain responsible for their own connection, durability,
+and retry behavior.
+
+## Errors
+
+Kinds and retryability are orthogonal. `ErrorKind` describes what failed while
+`Retryability` indicates whether an identical later attempt may succeed. Backend errors
+may preserve a source and operation label. SparseIO does not automatically retry in the
+initial implementation.
+
+## Reference Backends
+
+- `metadata::MemoryMetadata` is enabled by `memory-metadata` and uses an `RwLock<BTreeMap>`.
+- `writer::DiskWriter` is enabled by `disk-writer` and stores one safe filename per key.
+- `reader::OpenDalReader` is enabled by `opendal-reader`; service features are selected
+  individually with `opendal-reader-*` flags. SparseIO exposes only services that apply
+  bounded reads at the storage or protocol boundary, plus zero-copy memory reads. OpenDAL
+  adapters that fetch a complete value before slicing it are intentionally omitted.
+
+OpenDAL does not expose a distinct bounded-read capability flag. URI-created readers are
+therefore limited by an audited feature allowlist, while callers supplying a prebuilt
+operator are responsible for preserving the same property.
 
 ## Backend Validation
 
-SparseIO aims to provide targeted conformance tests and debugging harnesses for custom backend implementations.
-Each harness isolates the backend under test by supplying known-good in-memory implementations for the other
-traits. For example, a consumer testing a `Metadata` implementation can run it with the reference `Reader` and
-`Writer` implementations rather than diagnosing all three components at once.
-
-These harnesses will provide examples of expected behavior and deterministic workloads for concurrency,
-contention, retries, failures, and cache lifecycle transitions. They are intended to expose common consistency
-and integration vulnerabilities early, but they do not replace the guarantees or production configuration of the
-underlying metadata store. See [Trait Validation](../testing/VALIDATION.md) for the intended API, isolation model, and
-validation workloads.
-
-## Sample User Application Diagram
-
-<img src="../static/sparseio-sample-implementation.png" alt="User implementation architecture diagram" width="1000"/>
+The `validators` feature exposes executor-neutral `ReaderValidator`, `WriterValidator`,
+and `MetadataValidator` workloads. Instrumented reference backends live behind the
+`testing` feature. See [Trait Validation](../testing/VALIDATION.md).
 
 [bytes]: https://docs.rs/bytes/latest/bytes/struct.Bytes.html
