@@ -60,7 +60,7 @@ class FileColumn(VGroup):
         *,
         chunk_count: int,
         body_color: str,
-        label_color: str = WHITE,
+        label_color: str = MUTED_TEXT,
         fill_chunk_indices: set[int] | None = None,
         chunk_stroke_color: str | None = None,
     ) -> None:
@@ -68,7 +68,7 @@ class FileColumn(VGroup):
         fill_chunk_indices = fill_chunk_indices or set()
         chunk_stroke_color = chunk_stroke_color or FRAME_STROKE
 
-        title_text = Text(title, font_size=18, color=label_color, weight="BOLD")
+        title_text = Text(title, font_size=16, color=label_color)
         body = Rectangle(height=4.4, width=1.3, stroke_color=FRAME_STROKE, stroke_width=2)
         title_text.next_to(body, UP, buff=0.14)
 
@@ -180,14 +180,14 @@ class GeneralReadScene(Scene):
             y_labels.add(label)
 
         upstream = FileColumn(
-            "Upstream Object",
+            "(Upstream Object)",
             chunk_count=FILE_CHUNKS,
             body_color=UPSTREAM_COLOR,
             fill_chunk_indices=set(range(FILE_CHUNKS)),
             chunk_stroke_color="#B9D7E3",
         )
         cache = FileColumn(
-            "Sparse Cache",
+            "(Sparse Cache)",
             chunk_count=FILE_CHUNKS,
             body_color=CACHE_COLOR,
             fill_chunk_indices={0},
@@ -195,9 +195,9 @@ class GeneralReadScene(Scene):
         upstream.move_body_to([-2.45, 0.05, 0])
         cache.move_body_to([0.35, 0.05, 0])
 
-        reader_tag = Text("Reader", font_size=22, color=READER_COLOR, weight="BOLD")
+        reader_tag = Text("Reader", font_size=22, color=READER_COLOR)
         reader_tag.next_to(upstream.title_text, UP, buff=0.08)
-        writer_tag = Text("Writer", font_size=22, color="#7FAA5A", weight="BOLD")
+        writer_tag = Text("Writer", font_size=22, color="#7FAA5A")
         writer_tag.next_to(cache.title_text, UP, buff=0.08)
         reader_size = Text("size: 100%", font_size=16, color=UPSTREAM_COLOR, weight="BOLD")
         reader_size.next_to(upstream.body, DOWN, buff=0.24)
