@@ -11,7 +11,9 @@ permissions:
   contents: read
 
 env:
+  API_BENCHMARK_FEATURES: memory-metadata,disk-writer,opendal-reader-hf
   CARGO_TERM_COLOR: always
+  CORE_FEATURES: testing,memory-metadata,disk-writer,opendal-reader-fs,validators
 
 jobs:
   integration:
@@ -31,5 +33,17 @@ jobs:
         with:
           shared-key: cargo-${{ inputs.runner }}
 
-      # - name: Integration tests
-      #   run: cargo nextest run --tests it
+      - name: Integration tests
+        run: cargo nextest run --tests --features "${{ env.CORE_FEATURES }}"
+
+      - name: API benchmark smoke test
+        run: cargo bench --bench api_workloads --features "${{ env.API_BENCHMARK_FEATURES }}" -- --test
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Coverage
+        run: |
+          cargo llvm-cov --workspace --features "${{ env.CORE_FEATURES }}" --no-report
+          cargo llvm-cov report --ignore-filename-regex 'src/utils/testing/' --fail-uncovered-lines 0 --fail-uncovered-functions 0 --fail-uncovered-regions 0

@@ -1,75 +1,30 @@
 # CI Pipelines
 
-## Pipeline Graph
+Ubuntu and macOS entry workflows call the same quality, unit, and integration
+workflows. Windows runs the shared quality and unit jobs plus the disk writer contracts
+that exercise its native atomic replacement path. Tests begin only after quality checks
+pass.
 
-```mermaid
-flowchart TD
-    U["CI / Ubuntu"]
-    M["CI / macOS"]
-    Q(["Quality"])
-    T(["Unit"])
-    I(["Integration"])
+The shared core feature set enables test support, the in-memory metadata backend, disk
+writer, OpenDAL filesystem reader, and validators. Quality checks also compile default,
+test-only, and representative OpenDAL memory, HTTP, S3, and SFTP combinations.
 
-    U --> Q
-    M --> Q
-    Q -.-> T
-    Q -.-> I
-```
+## Quality
 
-## Workflow Layout
+The quality workflow runs pinned typo checking, nightly rustfmt in check mode, Clippy
+with warnings denied, feature compile checks, the Rust 1.91 MSRV check, benchmark
+compilation, and rustdoc with warnings and missing public documentation denied. OpenDAL service combinations are sampled
+instead of combining every mutually independent integration into one oversized build.
 
-- [`.github/workflows/ci-ubuntu.yml`](../.github/workflows/ci-ubuntu.yml) is the Ubuntu entry workflow.
-- [`.github/workflows/ci-macos.yml`](../.github/workflows/ci-macos.yml) is the macOS entry workflow.
-- [`.github/workflows/quality.yml`](../.github/workflows/quality.yml) defines reusable quality and compilation checks.
-- [`.github/workflows/unit.yml`](../.github/workflows/unit.yml) defines reusable unit and doc test execution.
-- [`.github/workflows/integration.yml`](../.github/workflows/integration.yml) defines
-  reusable integration test execution.
+## Tests and Coverage
 
-## Job Order
+Unit and documentation tests run separately from feature-backed integration tests.
+Nextest supplies concise execution and failure output. The integration workflow also
+runs the controlled API benchmark in smoke mode. `cargo-llvm-cov` permits zero uncovered production lines, functions, or
+regions. Feature-gated test implementations under `src/utils/testing/` are excluded
+from the production coverage denominator.
 
-`CI / Ubuntu` and `CI / macOS` both route into the same logical pipeline shape.
-`quality` runs first, then `unit` and `integration` both depend on `quality`, so
-formatting, linting, and compile validation must pass before the test fan-out begins.
-
-## Quality Workflow
-
-The quality workflow performs static validation and build verification before tests run.
-
-### [Typos][typos]
-
-- `typos` checks source code and documentation for spelling mistakes.
-- Version `1.49.0` is pinned so dictionary updates do not unexpectedly break the pipeline.
-
-### [rustfmt][rustfmt]
-
-- `cargo +nightly fmt --all` checks formatting consistency by reformatting the workspace.
-- The workflow fails if formatting would change tracked files.
-
-### [Clippy][clippy]
-
-- `cargo clippy --all-features --all-targets -- -D warnings` runs lints across all targets and features.
-- `-D warnings` promotes warnings to errors so the job fails on any lint finding.
-
-### Feature Compile Checks
-
-This catches missing imports, `cfg` mistakes, and feature-gating regressions without
-requiring full test execution for every combination.
-
-### [docs.rs][docs-rs] Feature Set
-
-- `RUSTDOCFLAGS='--cfg docsrs' cargo doc --all-features --no-deps` validates that
-  documentation builds under a docs.rs-like configuration.
-- This helps catch documentation-only compilation issues and cfg-gated API doc failures.
-
-## Unit Workflow
-
-The unit workflow focuses on fast correctness checks that do not require the broader integration feature matrix.
-
-## Integration Workflow
-
-The integration workflow exercises feature-backed behavior and the broader end-to-end test matrix.
-
-[clippy]: https://doc.rust-lang.org/clippy/
-[docs-rs]: https://docs.rs/
-[rustfmt]: https://github.com/rust-lang/rustfmt
-[typos]: https://github.com/crate-ci/typos
+Run the complete local workflow with `just ci`. Individual build and verification
+tasks are available in the `Justfile`. Use `just bench-components` for Divan
+microbenchmarks, `just bench-api` for controlled workloads, and `just bench-smoke` for
+benchmark correctness checks.
